@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Cache-Control" content="no-cache, must-revalidate">
 <title>호재맵 — 부동산 호재 지도</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -278,29 +279,6 @@ html,body { height:100%; font-family:'Noto Sans KR',sans-serif; overflow:hidden;
 .sr-score { font-size:12px; font-weight:700; flex-shrink:0; }
 .sr-none { font-size:11px; color:var(--text3); padding:8px 10px; }
 
-/* ── 탐험 현황 ── */
-#explore { padding:12px 18px; border-bottom:1px solid var(--border); }
-.sec-row { display:flex; justify-content:space-between; align-items:center; margin-bottom:9px; }
-.sw { display:flex; align-items:center; gap:5px; font-size:10px; color:var(--text3); cursor:pointer; user-select:none; }
-.sw input { accent-color:#1565c0; width:13px; height:13px; cursor:pointer; }
-.prog-row { margin-bottom:7px; }
-.prog-top { display:flex; justify-content:space-between; font-size:10px; color:var(--text2); margin-bottom:3px; }
-.prog-top b { color:var(--text); font-weight:600; }
-.prog-bg { height:5px; border-radius:3px; background:var(--bg3); overflow:hidden; }
-.prog-fill { height:100%; border-radius:3px; background:#1565c0; transition:width 0.4s ease; }
-.prog-row.done .prog-fill { background:#2e7d32; }
-
-.today-btn {
-  display:block; width:100%; margin-top:10px; padding:10px 12px;
-  background:linear-gradient(135deg,#1565c0,#003fa5); color:white;
-  border:none; border-radius:var(--radius-sm); cursor:pointer;
-  font-family:inherit; font-size:11px; font-weight:600; text-align:left;
-  line-height:1.5; letter-spacing:-0.2px; transition:opacity 0.15s;
-}
-.today-btn:hover { opacity:0.88; }
-.today-btn small { display:block; font-size:9px; opacity:0.72; font-weight:400; }
-
-#favs { margin-top:10px; }
 .fav-hd { font-size:10px; font-weight:600; color:var(--text3); margin-bottom:5px; }
 .fav-item {
   display:flex; justify-content:space-between; align-items:center;
@@ -437,11 +415,11 @@ html,body { height:100%; font-family:'Noto Sans KR',sans-serif; overflow:hidden;
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://unpkg.com/topojson-client@3/dist/topojson-client.min.js"></script>
-<script src="data-regions.js"></script>
-<script src="data-metrics.js"></script>
-<script src="data-redev.js"></script>
+<script src="data-regions.js?v=20260817b"></script>
+<script src="data-metrics.js?v=20260817b"></script>
+<script src="data-redev.js?v=20260817b"></script>
 <!-- 실거래가. tools/fetch-prices.py 를 돌려야 생기며, 없어도 지도는 동작합니다. -->
-<script src="data-prices.js" onerror="void 0"></script>
+<script src="data-prices.js?v=20260817b" onerror="void 0"></script>
 <script>
 // ── 7단계 색상 ───────────────────────────────────────────────
 function scoreStyle(s) {
