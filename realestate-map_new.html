@@ -333,7 +333,13 @@ function lookup(code) {
                 : code.length === 5 ? [code.slice(0,2)]
                 : [];
   for (const p of parents) {
-    if (DATA[p]) return { reg:DATA[p], own:false, from:DATA[p].name };
+    if (!DATA[p]) continue;
+    // 시도에서 물려받을 때는 시도 점수가 아니라 '외곽 기준값'을 쓴다.
+    // 시도 점수는 판교·천안 같은 상위 지역이 끌어올린 값이라 그대로 쓰면
+    // 이천시가 서울 양천구와 동점이 되는 일이 생긴다. (SIDO_BASE 주석 참고)
+    const base = (p.length === 2 && typeof SIDO_BASE !== "undefined" && SIDO_BASE[p])
+      ? SIDO_BASE[p] : DATA[p];
+    return { reg:base, own:false, from:DATA[p].name };
   }
   return { reg:null, own:false, from:null };
 }
