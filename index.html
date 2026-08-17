@@ -361,9 +361,14 @@ html,body { height:100%; font-family:'Noto Sans KR',sans-serif; overflow:hidden;
   #sb-brand { padding:12px 18px 10px; }
   #top-bar { display:none; }
   #sb-toggle { display:none; }
+  /* 위에서부터 검색 → 줌 → 레벨 배지 순으로 겹치지 않게 내린다 */
   #search-box.on-map { top:10px; left:10px; right:10px; width:auto; }
-  #level-badge { top:64px; left:10px; }
-  #zoom-hint { top:108px; }
+  .leaflet-top .leaflet-control { margin-top:62px; }
+  #level-badge { top:66px; left:58px; }
+  /* 안내 문구는 시트 바로 위로 — 상단이 이미 빽빽하다 */
+  #zoom-hint { top:auto; bottom:46vh; font-size:10px; padding:5px 12px; }
+  body.sheet-open #zoom-hint { opacity:0; }
+  body.sheet-closed #zoom-hint { bottom:100px; }
   #zoom-hint { bottom:auto; top:60px; }
   #detail { padding-bottom:40px; }
   .beat { padding:12px 13px; }
@@ -444,13 +449,13 @@ html,body { height:100%; font-family:'Noto Sans KR',sans-serif; overflow:hidden;
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://unpkg.com/topojson-client@3/dist/topojson-client.min.js"></script>
-<script src="data-regions.js?v=202608171535"></script>
-<script src="data-metrics.js?v=202608171535"></script>
-<script src="data-redev.js?v=202608171535"></script>
+<script src="data-regions.js?v=202608171538"></script>
+<script src="data-metrics.js?v=202608171538"></script>
+<script src="data-redev.js?v=202608171538"></script>
 <!-- 실거래가. tools/fetch-prices.py 를 돌려야 생기며, 없어도 지도는 동작합니다. -->
-<script src="data-prices.js?v=202608171535" onerror="void 0"></script>
+<script src="data-prices.js?v=202608171538" onerror="void 0"></script>
 <script>
-const APP_VERSION = "v2026.08.17.1535";
+const APP_VERSION = "v2026.08.17.1538";
 
 // ── 7단계 색상 ───────────────────────────────────────────────
 function scoreStyle(s) {
@@ -616,7 +621,12 @@ mapArea.addEventListener("mousemove", e => {
   moveTip(e.clientX, e.clientY);
 });
 
+// 터치 기기에는 호버가 없다. mouseover만 나고 mouseout이 안 나서
+// 검은 툴팁이 화면에 그대로 남는다. 아예 띄우지 않는다.
+const NO_HOVER = window.matchMedia("(hover: none)").matches;
+
 function showTip(d, e) {
+  if (NO_HOVER) return;
   document.getElementById("htip-name").textContent = d.name;
   document.getElementById("htip-path").textContent = d.path;
   if (d.view) {
@@ -1127,6 +1137,8 @@ function updateLayers() {
   setLevel(want);
 }
 map.on("zoomend", updateLayers);
+map.on("movestart zoomstart click", hideTip);
+document.addEventListener("touchstart", hideTip, { passive:true });
 
 // ── 필터 ────────────────────────────────────────────────────
 function refreshStyles() {
