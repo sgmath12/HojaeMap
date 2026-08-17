@@ -113,9 +113,55 @@ html,body { height:100%; font-family:'Noto Sans KR',sans-serif; overflow:hidden;
 #detail { flex:1; padding:14px 18px; }
 .ph { text-align:center; color:var(--text3); font-size:12px; padding-top:55px; line-height:2.2; }
 .ph-icon { font-size:28px; }
-.r-name { font-size:16px; font-weight:700; letter-spacing:-0.4px; margin-bottom:3px; }
+.r-name { font-size:18px; font-weight:700; letter-spacing:-0.5px; margin-bottom:3px; }
 .r-path { font-size:10px; color:var(--text3); margin-bottom:2px; }
 .r-sub  { font-size:11px; color:var(--text3); margin-bottom:13px; }
+
+/* 카드 머리 — 이름이 주인공, 점수는 배지로 물러남 */
+.card-head {
+  display:flex; justify-content:space-between; align-items:flex-start;
+  gap:10px; margin-bottom:14px;
+}
+.score-badge {
+  flex-shrink:0; font-size:15px; font-weight:700; letter-spacing:-0.5px;
+  border-radius:20px; padding:5px 13px; line-height:1.3; cursor:help;
+}
+
+/* 이야기 */
+.beats { display:flex; flex-direction:column; gap:2px; margin-bottom:14px; }
+.beat {
+  display:flex; gap:10px; padding:11px 12px;
+  border-radius:10px; background:var(--bg2);
+}
+.beat.minus { background:#fdf4f2; }
+.beat-ico { font-size:16px; line-height:1.35; flex-shrink:0; }
+.beat-head {
+  font-size:13px; font-weight:600; color:var(--text);
+  line-height:1.5; letter-spacing:-0.3px;
+}
+.beat.minus .beat-head { color:#8a3a24; }
+.beat-detail { font-size:11px; color:var(--text2); line-height:1.6; margin-top:4px; }
+.beat-top {
+  display:inline-block; font-size:10px; font-weight:700; color:#1565c0;
+  background:#dce8f8; border-radius:5px; padding:2px 7px; margin-top:6px;
+}
+.tags { line-height:1.9; margin-bottom:14px; }
+.tag {
+  display:inline-block; background:rgba(0,0,0,0.06); border-radius:20px;
+  padding:3px 9px; font-size:10px; font-weight:600; margin:0 2px 2px 0;
+  color:var(--text2);
+}
+
+/* 숫자는 접어둔다 */
+.numbers { margin-top:16px; border-top:1px solid var(--border); padding-top:12px; }
+.numbers summary {
+  font-size:11px; font-weight:600; color:var(--text3);
+  cursor:pointer; user-select:none; list-style:none; padding:2px 0;
+}
+.numbers summary::-webkit-details-marker { display:none; }
+.numbers summary::before { content:"▸ "; }
+.numbers[open] summary::before { content:"▾ "; }
+.numbers summary:hover { color:var(--text2); }
 .inh-note {
   background:var(--bg3); border-radius:6px; padding:7px 10px;
   font-size:10px; color:var(--text2); line-height:1.6; margin-bottom:12px;
@@ -201,10 +247,10 @@ html,body { height:100%; font-family:'Noto Sans KR',sans-serif; overflow:hidden;
       <span class="lv"    data-lv="sgg">시군구</span><span class="lv-sep">›</span>
       <span class="lv"    data-lv="dong">동</span>
     </div>
-    <div id="zoom-hint">🔍 확대하면 시군구 → 행정동 단위로 세분화됩니다</div>
+    <div id="zoom-hint">🔍 확대할수록 더 좁은 동네까지 볼 수 있어요</div>
   </div>
   <div id="sidebar">
-    <div id="sb-brand"><h1>부동산 호재 지도</h1><p>지역을 클릭하면 상세 정보를 볼 수 있어요</p></div>
+    <div id="sb-brand"><h1>여기 왜 뜨는 걸까?</h1><p>동네를 눌러보면 이유를 알려드려요</p></div>
     <div id="legend">
       <div class="sec-label">호재 지수 (7단계)</div>
       <div class="leg-steps">
@@ -233,7 +279,7 @@ html,body { height:100%; font-family:'Noto Sans KR',sans-serif; overflow:hidden;
         <div class="chip" data-c="future">🔮 미래가치</div>
       </div>
     </div>
-    <div id="detail"><div class="ph"><div class="ph-icon">📍</div><br>지역을 클릭하면<br>호재 정보가 표시됩니다</div></div>
+    <div id="detail"><div class="ph"><div class="ph-icon">👆</div><br>지도에서 동네를 눌러보세요<br>여기가 왜 뜨는 곳인지<br>차근차근 설명해드릴게요</div></div>
   </div>
 </div>
 
@@ -386,29 +432,151 @@ function priceFor(d) {
   return s ? { label:"평당가 · 구 평균", text:`${fmtWon(s.won_per_py)} (${s.n}건)` } : null;
 }
 
+// ── 이야기 엔진 ──────────────────────────────────────────────
+// 3,504개 동에 일일이 글을 쓸 수 없으니, 지표와 실측값에서 문장이 나오게 한다.
+// 규칙: 점수 자체를 말하지 말고 그 점수가 "생활에서 뭘 뜻하는지"를 말한다.
+// 예) 학군 96점 (X) → "전국구 학원가가 걸어갈 거리에 있어요" (O)
+
+// [기준점수, 문구] — 위에서부터 처음 걸리는 것을 쓴다
+const BEATS = {
+  develop: {
+    icon:"🏗",
+    up:[[90,"지금 대규모 개발이 걸려 있어요"],[80,"개발 사업이 진행 중이에요"]],
+    down:[[52,"눈에 띄는 개발 계획은 아직 없어요"]],
+  },
+  policy: {
+    icon:"📋",
+    up:[[90,"재건축·정비 규제가 풀린 곳이에요"],[80,"정비사업 정책 수혜를 받고 있어요"]],
+    down:[[52,"정비사업 쪽 기대는 크지 않아요"]],
+  },
+  supply: {
+    icon:"🏠",
+    up:[[82,"새 아파트가 귀해서 매물이 잘 나가요"]],
+    down:[[58,"입주 물량이 많아 전세가 흔들릴 수 있어요"]],
+  },
+  job: {
+    icon:"💼",
+    up:[[92,"대형 일자리가 코앞이에요"],[80,"출퇴근이 편한 위치예요"]],
+    down:[[54,"직장까지는 좀 나가야 해요"]],
+  },
+  school: {
+    icon:"🏫",
+    up:[[92,"전국구 학원가가 걸어갈 거리에 있어요"],[82,"학군 좋기로 소문난 동네예요"]],
+    down:[[54,"학군 프리미엄은 크지 않아요"]],
+  },
+  life: {
+    icon:"🌱",
+    up:[[90,"상권이랑 공원이 아주 잘 갖춰져 있어요"],[80,"살기 편한 동네예요"]],
+    down:[[54,"생활 인프라는 아직 부족한 편이에요"]],
+  },
+  population: {
+    icon:"👥",
+    up:[[88,"젊은 사람들이 계속 들어오고 있어요"],[80,"인구가 꾸준히 느는 곳이에요"]],
+    down:[[54,"인구가 빠져나가는 추세예요"]],
+  },
+  future: {
+    icon:"🔮",
+    up:[[92,"앞으로 10년이 제일 기대되는 곳이에요"],[82,"미래 가치를 높게 보는 지역이에요"]],
+    down:[[54,"장기 전망은 밝지 않은 편이에요"]],
+  },
+};
+
+// 역세권은 점수가 아니라 실제 거리로 말한다
+function walkBeat(mx) {
+  if (!mx) return null;
+  const m = mx.station_m, min = Math.max(1, Math.round(m / 67));   // 도보 67m/분
+  let head, kind = "plus";
+  if (m <= 300)       head = `지하철역이 코앞이에요 — 걸어서 ${min}분`;
+  else if (m <= 700)  head = `역까지 걸어서 ${min}분이면 가요`;
+  else if (m <= 1200) head = `역까지 걸어서 ${min}분쯤 걸려요`;
+  else if (m <= 1800) { head = `역이 좀 멀어요 — 걸어서 ${min}분`; kind = "minus"; }
+  else if (m <= 3000) { head = "역까지 걸어가긴 힘들어요 — 버스를 타야 해요"; kind = "minus"; }
+  else                { head = "역이 멀어서 차가 거의 필수예요"; kind = "minus"; }
+  const detail = mx.station_n >= 2
+    ? `1km 안에 역이 ${mx.station_n}개나 있어서 환승도 편해요.`
+    : null;
+  return { icon:kind === "plus" ? "🚇" : "🚗", head, detail, kind,
+           weight:mx.transport, key:"transport" };
+}
+
+function pick(tiers, v) {
+  for (const [th, text] of tiers) if (v >= th) return text;
+  return null;
+}
+function pickDown(tiers, v) {
+  for (const [th, text] of tiers) if (v <= th) return text;
+  return null;
+}
+
+// 지역 하나에서 이야기 뽑기 — 강점 최대 3개 + 약점 최대 2개
+function buildStory(d) {
+  const reg = d.view;
+  const news = reg.news || [];
+  const detailOf = k => {
+    const n = news.find(x => x.t === k);
+    return n ? n.tx : null;
+  };
+
+  const plus = [], minus = [];
+  const w = walkBeat(d.mx);
+  if (w) (w.kind === "plus" ? plus : minus).push(w);
+
+  for (const [key, spec] of Object.entries(BEATS)) {
+    const v = reg[key];
+    if (v == null) continue;
+    const up = pick(spec.up, v);
+    if (up) { plus.push({ icon:spec.icon, head:up, detail:detailOf(key), kind:"plus", weight:v, key }); continue; }
+    const dn = pickDown(spec.down, v);
+    // 약점에는 뉴스를 붙이지 않는다. 유형만 맞으면 붙다 보니
+    // "정비사업 기대 낮음" 밑에 "구역 지정" 같은 호재가 달려 앞뒤가 안 맞았다.
+    if (dn) minus.push({ icon:"⚠️", head:dn, detail:null, kind:"minus", weight:100 - v, key });
+  }
+
+  plus.sort((a, b) => b.weight - a.weight);
+  minus.sort((a, b) => b.weight - a.weight);
+  const out = plus.slice(0, 3).concat(minus.slice(0, 2));
+
+  // 강점이 하나도 안 잡히면 남은 뉴스라도 보여준다
+  if (!out.length && news.length) {
+    return news.slice(0, 3).map(n => ({
+      icon:(CAT_LABELS[n.t] || "📌").slice(0, 2), head:n.tx, detail:null, kind:"plus", key:n.t,
+    }));
+  }
+  return out;
+}
+
 // ── 사이드바 상세 ────────────────────────────────────────────
-const DISCLAIMER = `<b>실측</b> 표시가 붙은 값만 좌표로 계산된 것이고, 나머지 점수는
-  공개된 개발계획 등을 근거로 한 추정치입니다. 투자 판단 근거로 쓸 수 없습니다.`;
+const DISCLAIMER = `<b>실측</b> 표시가 붙은 값만 좌표로 계산된 것이고, 나머지는
+  공개된 개발계획 등을 근거로 한 추정치예요. 투자 판단 근거로 쓰면 안 돼요.`;
 
 function showDetail(d) {
   const el = document.getElementById("detail");
   if (!d.reg) {
     el.innerHTML = `<div class="r-name">${d.name}</div>
       <div class="r-path">${d.path}</div>
-      <div class="ph" style="padding-top:40px">📭<br>아직 수집된 호재 정보가 없습니다</div>`;
+      <div class="ph" style="padding-top:40px">📭<br>여긴 아직 정보를<br>모으는 중이에요</div>`;
     return;
   }
   const reg = d.view, sc = getScore(reg), st = scoreStyle(sc);
 
-  const tagsHTML = (reg.tags || []).map(t =>
-    `<span style="display:inline-block;background:rgba(0,0,0,0.07);border-radius:20px;padding:3px 9px;font-size:10px;font-weight:600;margin:2px 2px 2px 0;color:var(--text2)">${t}</span>`
-  ).join("");
+  // ── 이야기 ──
+  const beats = buildStory(d);
+  const beatsHTML = beats.map((b, i) => `
+    <div class="beat ${b.kind}">
+      <div class="beat-ico">${b.icon}</div>
+      <div class="beat-body">
+        <div class="beat-head">${b.head}</div>
+        ${b.detail ? `<div class="beat-detail">${b.detail}</div>` : ""}
+        ${i === 0 && b.kind === "plus" ? `<div class="beat-top">👉 이게 여기서 제일 커요</div>` : ""}
+      </div>
+    </div>`).join("");
 
-  const CATS1 = ["transport","develop","policy","supply"];
-  const CATS2 = ["job","school","life","population","future"];
+  const tagsHTML = (reg.tags || []).map(t => `<span class="tag">${t}</span>`).join("");
+
+  // ── 접어둔 숫자 ──
+  const CATS = ["transport","develop","policy","supply","job","school","life","population","future"];
   function barRow(c) {
     const v = reg[c] != null ? reg[c] : 50;
-    // 교통은 실측 대체분이라 배지를 붙여 손으로 매긴 값과 구분한다
     const measured = c === "transport" && d.mx;
     return `<div class="cat-row" title="${CAT_DESC[c]}">
       <span style="font-size:11px;color:var(--text2)">${CAT_LABELS[c]}${measured ? ' <span class="measured">실측</span>' : ""}</span>
@@ -417,10 +585,8 @@ function showDetail(d) {
     <div class="bar-bg"><div class="bar-fill" style="width:${v}%;background:${CAT_COLORS[c]}"></div></div>`;
   }
 
-  // 좌표로 계산된 값 — 판단이 아니라 측정치
   const price = priceFor(d);
   const measuredHTML = d.mx ? `
-    <div class="news-hd">실측 정보 <span style="text-transform:none;font-weight:400">· 좌표 계산</span></div>
     <div class="mx-grid">
       <div class="mx-item"><span>가장 가까운 역</span><b>${d.mx.station_m.toLocaleString()}m</b></div>
       <div class="mx-item"><span>반경 1km 역 개수</span><b>${d.mx.station_n}개</b></div>
@@ -428,37 +594,38 @@ function showDetail(d) {
       <div class="mx-item"><span>생활 POI 밀도</span><b>${d.mx.life_density} <small>/100</small></b></div>
       ${price ? `<div class="mx-item"><span>아파트 실거래 ${price.label}</span><b>${price.text}</b></div>` : ""}
     </div>
-    <div class="mx-note">학교 접근성·POI 밀도는 <b>학군·라이프 점수가 아닙니다.</b>
-      반경 내 개수의 전국 백분위라 인구 밀도·상업 밀도를 함께 반영합니다.</div>` : "";
+    <div class="mx-note">학교 접근성·POI 밀도는 <b>학군·라이프 점수가 아니에요.</b>
+      반경 안 개수의 전국 백분위라 인구 밀도·상업 밀도가 같이 섞여 있어요.</div>` : "";
 
   const all = reg.news || [];
-  const filtered = curFilter === "all" ? all : all.filter(n => n.t === curFilter);
-  const news = filtered.length ? filtered : all;
-  const newsHTML = news.length
-    ? news.map(n => `<div class="news-item"><span class="ntag t-${n.t}">${CAT_LABELS[n.t]}</span>
+  const newsHTML = all.length
+    ? all.map(n => `<div class="news-item"><span class="ntag t-${n.t}">${CAT_LABELS[n.t]}</span>
         <div class="ntext">${n.tx}</div>
         <div class="ndate">${n.d}${n.src ? ` · <a href="${n.src}" target="_blank" rel="noopener">출처</a>` : ""}</div></div>`).join("")
-    : `<div style="font-size:11px;color:var(--text3);padding:6px 0">등록된 호재 정보가 없습니다.</div>`;
+    : `<div style="font-size:11px;color:var(--text3);padding:6px 0">등록된 호재 정보가 없어요.</div>`;
 
   el.innerHTML = `
-    <div class="r-name">${d.name}</div>
-    ${d.path ? `<div class="r-path">${d.path}</div>` : ""}
-    <div class="r-sub">호재지수 ${sc}점</div>
-    ${d.own ? "" : `<div class="inh-note">ℹ️ <b>${d.name}</b>의 개별 데이터는 아직 없습니다.
-      아래 수치는 상위 지역 <b>${d.from}</b> 기준 참고값입니다.</div>`}
-    <div class="score-card" style="background:${st.cardBg}">
-      <div><div class="sc-num" style="color:${st.fill}">${sc}<span class="sc-unit">점</span></div>
-      <div class="sc-lbl" style="color:${st.cardText}">종합 호재지수</div></div>
-      <div class="sc-grade" style="color:${st.fill}">${st.grade}</div>
+    <div class="card-head">
+      <div>
+        <div class="r-name">${d.name}</div>
+        ${d.path ? `<div class="r-path">${d.path}</div>` : ""}
+      </div>
+      <div class="score-badge" style="background:${st.cardBg};color:${st.fill}"
+           title="종합 호재지수 ${sc}점 · ${st.grade}">${sc}</div>
     </div>
-    ${tagsHTML ? `<div style="margin-bottom:12px;line-height:1.8">${tagsHTML}</div>` : ""}
-    <div class="news-hd">기본 지표</div>
-    <div class="cats">${CATS1.map(barRow).join("")}</div>
-    <div class="news-hd">정성 지표</div>
-    <div class="cats">${CATS2.map(barRow).join("")}</div>
-    ${measuredHTML}
-    <div class="news-hd">주요 호재 / 악재</div>${newsHTML}
-    <button class="ai-btn">🔍 ${d.name} AI 심층 분석 →</button>
+    ${d.own ? "" : `<div class="inh-note">ℹ️ <b>${d.name}</b> 자체 정보는 아직 모으는 중이에요.
+      아래 내용은 <b>${d.from}</b> 기준이라 참고만 하세요.</div>`}
+    <div class="beats">${beatsHTML}</div>
+    ${tagsHTML ? `<div class="tags">${tagsHTML}</div>` : ""}
+    <button class="ai-btn">🔍 ${d.name} 더 자세히 보기 →</button>
+
+    <details class="numbers">
+      <summary>숫자로 보기</summary>
+      <div class="news-hd" style="margin-top:12px">9개 지표</div>
+      <div class="cats">${CATS.map(barRow).join("")}</div>
+      ${d.mx ? `<div class="news-hd">실측 정보 <span style="text-transform:none;font-weight:400">· 좌표 계산</span></div>${measuredHTML}` : ""}
+      <div class="news-hd">원본 호재 / 악재</div>${newsHTML}
+    </details>
     <div class="disclaimer">${DISCLAIMER}</div>`;
 }
 
