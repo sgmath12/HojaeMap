@@ -248,6 +248,8 @@ def main():
             "station_m": int(round(dist[i])),
             "station_n": int(n1k[i]),
             "lat": r["lat"], "lng": r["lng"],
+            # 검색 색인용. 동 경계는 지연 로딩이라 이름을 미리 들고 있어야 한다.
+            "name": r["name"],
         }
 
     out = os.path.join(ROOT, "data-metrics.js")
@@ -261,6 +263,7 @@ def main():
         f.write("// life_density   반경 내 공원·카페 밀도의 전국 백분위 (라이프 아님, 참고용)\n")
         f.write("// station_m      최단 역까지 거리(m) · station_n  1km 내 역 개수\n")
         f.write("// lat/lng        활동 중심점 (POI 가중, 기하학적 중심이 아님)\n")
+        f.write("// name           행정동 이름 — 검색 색인용\n")
         f.write("const METRICS = ")
         json.dump(rows, f, ensure_ascii=False, separators=(",", ":"))
         f.write(";\n")

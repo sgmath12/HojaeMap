@@ -152,6 +152,19 @@ html,body { height:100%; font-family:'Noto Sans KR',sans-serif; overflow:hidden;
   color:var(--text2);
 }
 
+/* 점수 분해 — 왜 이 점수인지 */
+.why { background:var(--bg2); border-radius:10px; padding:11px 12px; margin-bottom:14px; }
+.why-hd { font-size:10px; font-weight:700; color:var(--text3); margin-bottom:8px; }
+.wf { display:flex; height:14px; border-radius:4px; overflow:hidden; gap:1px; }
+.wf-seg { min-width:2px; cursor:help; transition:opacity 0.15s; }
+.wf-seg:hover { opacity:0.75; }
+.why-legend { display:flex; flex-wrap:wrap; gap:4px 10px; margin-top:8px; }
+.wl { display:flex; align-items:center; gap:4px; font-size:10px; color:var(--text2); }
+.wl i { width:7px; height:7px; border-radius:2px; flex-shrink:0; }
+.why-line { font-size:11px; color:var(--text2); line-height:1.65; margin-top:8px; }
+.why-line b { color:var(--text); font-weight:600; }
+.wpct { font-size:9px; color:var(--text3); }
+
 /* 숫자는 접어둔다 */
 .numbers { margin-top:16px; border-top:1px solid var(--border); padding-top:12px; }
 .numbers summary {
@@ -228,6 +241,43 @@ html,body { height:100%; font-family:'Noto Sans KR',sans-serif; overflow:hidden;
 /* 안개가 걷히는 연출 */
 .leaflet-interactive { transition:fill 0.45s ease, fill-opacity 0.45s ease, stroke 0.45s ease; }
 
+/* ── 검색 ── */
+#search-box { padding:10px 18px 12px; border-bottom:1px solid var(--border); position:relative; }
+.search-row {
+  display:flex; align-items:center; gap:7px;
+  background:var(--bg2); border:1px solid var(--border2);
+  border-radius:20px; padding:0 12px; transition:border-color 0.15s;
+}
+.search-row:focus-within { border-color:#90baea; background:var(--bg); }
+.search-ico { font-size:12px; opacity:0.5; flex-shrink:0; }
+#search {
+  flex:1; border:none; background:none; outline:none;
+  font-family:inherit; font-size:13px; color:var(--text);
+  padding:9px 0; min-width:0;
+}
+#search::placeholder { color:var(--text3); font-size:12px; }
+#search::-webkit-search-cancel-button { display:none; }
+#search-x {
+  border:none; background:none; cursor:pointer; color:var(--text3);
+  font-size:17px; line-height:1; padding:2px 0 4px; display:none; flex-shrink:0;
+}
+#search-x.on { display:block; }
+#search-results { margin-top:7px; max-height:38vh; overflow-y:auto; }
+.sr {
+  display:flex; justify-content:space-between; align-items:center; gap:8px;
+  padding:8px 10px; border-radius:7px; cursor:pointer; font-size:12px;
+}
+.sr:hover, .sr.sel { background:var(--bg3); }
+.sr-name { font-weight:600; color:var(--text); }
+.sr-path { font-size:10px; color:var(--text3); margin-top:1px; }
+.sr-lv {
+  font-size:9px; font-weight:600; color:var(--text3);
+  background:var(--bg3); border-radius:4px; padding:2px 5px; flex-shrink:0;
+}
+.sr:hover .sr-lv, .sr.sel .sr-lv { background:var(--bg); }
+.sr-score { font-size:12px; font-weight:700; flex-shrink:0; }
+.sr-none { font-size:11px; color:var(--text3); padding:8px 10px; }
+
 /* ── 탐험 현황 ── */
 #explore { padding:12px 18px; border-bottom:1px solid var(--border); }
 .sec-row { display:flex; justify-content:space-between; align-items:center; margin-bottom:9px; }
@@ -261,16 +311,7 @@ html,body { height:100%; font-family:'Noto Sans KR',sans-serif; overflow:hidden;
 .fav-item b { color:var(--text); font-weight:600; }
 .fav-x { color:var(--text3); font-size:13px; padding:0 2px; }
 
-/* 범례·필터는 접어둔다 — 초심자에겐 필요할 때만 */
-#legend-box { border-bottom:1px solid var(--border); }
-#legend-box summary {
-  font-size:10px; font-weight:600; color:var(--text3); cursor:pointer;
-  user-select:none; list-style:none; padding:11px 18px;
-}
-#legend-box summary::-webkit-details-marker { display:none; }
-#legend-box summary::before { content:"▸ "; }
-#legend-box[open] summary::before { content:"▾ "; }
-#legend, #filters { border-bottom:none; padding-top:0; }
+#favs:not(:empty) { padding:11px 18px; border-bottom:1px solid var(--border); }
 
 /* 새로 연 동네 알림 */
 .discover {
@@ -290,7 +331,9 @@ html,body { height:100%; font-family:'Noto Sans KR',sans-serif; overflow:hidden;
 #sheet-handle { display:none; }
 @media (max-width:720px) {
   #app { display:block; }
-  #map-area { position:absolute; inset:0 0 42vh 0; }
+  /* 지도는 화면 전체를 채우고 시트가 그 위에 얹힌다.
+     지도를 시트 위쪽에만 두면 시트를 내렸을 때 빈 공간만 생긴다. */
+  #map-area { position:absolute; inset:0; }
   #sidebar {
     position:fixed; left:0; right:0; bottom:0; width:auto;
     height:42vh; max-height:88vh; border-left:none;
@@ -298,6 +341,10 @@ html,body { height:100%; font-family:'Noto Sans KR',sans-serif; overflow:hidden;
     box-shadow:0 -4px 24px rgba(0,0,0,0.16); z-index:1200;
     transition:height 0.28s cubic-bezier(.32,.72,0,1);
   }
+  /* 시트에 가린 만큼 지도 컨트롤을 위로 올린다 */
+  .leaflet-bottom { bottom:44vh; transition:bottom 0.28s; }
+  #sidebar.closed ~ * .leaflet-bottom, .sheet-closed .leaflet-bottom { bottom:96px; }
+  .sheet-open .leaflet-bottom { bottom:84vh; }
   #sidebar.open   { height:82vh; }
   #sidebar.closed { height:88px; }
   #sheet-handle {
@@ -343,14 +390,18 @@ html,body { height:100%; font-family:'Noto Sans KR',sans-serif; overflow:hidden;
     <div id="sheet-handle"><div class="grip"></div><div id="sheet-peek"></div></div>
     <div id="sb-brand"><h1>여기 왜 뜨는 걸까?</h1><p>동네를 눌러보면 이유를 알려드려요</p></div>
 
-    <div id="explore">
-      <div class="sec-label">탐험 현황</div>
-      <div id="prog"></div>
-      <button id="today" class="today-btn"></button>
-      <div id="favs"></div>
+    <div id="search-box">
+      <div class="search-row">
+        <span class="search-ico">🔍</span>
+        <input id="search" type="search" placeholder="동네 이름으로 찾기 — 예: 대치동"
+               autocomplete="off" enterkeyhint="search">
+        <button id="search-x" type="button" aria-label="지우기">×</button>
+      </div>
+      <div id="search-results"></div>
     </div>
-    <details id="legend-box">
-    <summary>범례 · 필터</summary>
+
+    <div id="favs"></div>
+    </div>
     <div id="legend">
       <div class="sec-label">호재 지수 (7단계)</div>
       <div class="leg-steps">
@@ -380,7 +431,6 @@ html,body { height:100%; font-family:'Noto Sans KR',sans-serif; overflow:hidden;
         <div class="chip" data-c="price">💰 시세</div>
       </div>
     </div>
-    </details>
     <div id="detail"><div class="ph"><div class="ph-icon">👆</div><br>지도에서 동네를 눌러보세요<br>여기가 왜 뜨는 곳인지<br>차근차근 설명해드릴게요</div></div>
   </div>
 </div>
@@ -425,6 +475,28 @@ const CAT_DESC = {
   future:"AI·반도체·바이오 산업 수혜, 재건축 연한, 미래 용적률",
   price:"아파트 실거래 평당가 (로그 척도). 종합점수에 28% 반영됩니다"
 };
+// ── 종합점수 계산 ────────────────────────────────────────────
+// 점수는 9개 지표의 가중평균이다. 손으로 정한 숫자가 아니라 계산 결과라서
+// 카드에서 "왜 이 점수인지"를 그대로 보여줄 수 있다.
+// 가중치 합은 1.0. 집값을 실제로 움직이는 힘 순서로 잡았다.
+const WEIGHTS = {
+  transport:0.14, develop:0.14, job:0.14, future:0.13,
+  policy:0.11, school:0.11, life:0.09,
+  supply:0.07, population:0.07,
+};
+function baseScore(reg) {
+  let v = 0;
+  for (const k in WEIGHTS) v += (reg[k] != null ? reg[k] : 50) * WEIGHTS[k];
+  return v;
+}
+// 지표별 기여도 — 합치면 종합점수가 된다
+function contributions(reg) {
+  return Object.keys(WEIGHTS)
+    .map(k => ({ k, v:reg[k] != null ? reg[k] : 50, w:WEIGHTS[k],
+                 c:(reg[k] != null ? reg[k] : 50) * WEIGHTS[k] }))
+    .sort((a, b) => b.c - a.c);
+}
+
 let curFilter = "all";
 function getScore(reg) { return curFilter === "all" ? reg.score : (reg[curFilter] != null ? reg[curFilter] : reg.score); }
 
@@ -501,12 +573,14 @@ function info(f) {
   let view = L.reg ? (mx ? Object.assign({}, L.reg, { transport:mx.transport }) : L.reg) : null;
   const d0 = { code, name:p.name };
   const px = view ? priceFor(d0) : null;
-  if (view && px) {
-    const ps = priceScore(px.py);
+  if (view) {
+    const base = baseScore(view);
+    const ps = px ? priceScore(px.py) : null;
     view = Object.assign({}, view, {
       price: ps,
       priceRaw: px,
-      score: Math.round(view.score * (1 - PRICE_W) + ps * PRICE_W),
+      base: Math.round(base),
+      score: Math.round(ps != null ? base * (1 - PRICE_W) + ps * PRICE_W : base),
     });
   }
   return { code, name:p.name, reg:L.reg, view, mx, rx, px, own:L.own, from:L.from, path:pathOf(code) };
@@ -765,8 +839,7 @@ const DISCLAIMER = `<b>실측</b> 표시가 붙은 값만 좌표로 계산된 �
 function showDetail(d, fresh) {
   const el = document.getElementById("detail");
   if (!d.reg) {
-    el.innerHTML = `${fresh ? `<div class="discover">✨ 새로운 동네를 열었어요!</div>` : ""}
-      <div class="r-name">${d.name}</div>
+    el.innerHTML = `<div class="r-name">${d.name}</div>
       <div class="r-path">${d.path}</div>
       <div class="ph" style="padding-top:40px">📭<br>여긴 아직 정보를<br>모으는 중이에요</div>`;
     document.getElementById("sheet-peek").textContent = d.name;
@@ -788,6 +861,32 @@ function showDetail(d, fresh) {
 
   const tagsHTML = (reg.tags || []).map(t => `<span class="tag">${t}</span>`).join("");
 
+  // ── 점수 분해 ──
+  // 종합점수가 어떤 지표에서 얼마나 나왔는지 그대로 보여준다.
+  // 막대 길이 = 그 지표의 기여분. 다 더하면 종합점수가 된다.
+  const contrib = contributions(reg);
+  const segs = contrib.map(x =>
+    `<div class="wf-seg" style="flex:${x.c};background:${CAT_COLORS[x.k]}"
+      title="${CAT_LABELS[x.k]} ${x.v}점 × 비중 ${Math.round(x.w*100)}% = ${x.c.toFixed(1)}"></div>`).join("");
+  const priceSeg = reg.price != null
+    ? `<div class="wf-seg" style="flex:${reg.price * PRICE_W};background:${CAT_COLORS.price}"
+        title="시세 ${reg.price}점 × 비중 ${Math.round(PRICE_W*100)}%"></div>` : "";
+  const top3 = contrib.slice(0, 3);
+  const low1 = contrib[contrib.length - 1];
+  const whyHTML = `
+    <div class="why">
+      <div class="why-hd">이 점수는 이렇게 나왔어요</div>
+      <div class="wf">${segs.map(x => x).join ? segs : segs}${priceSeg}</div>
+      <div class="why-legend">
+        ${top3.map(x => `<span class="wl"><i style="background:${CAT_COLORS[x.k]}"></i>${CAT_LABELS[x.k]} ${x.v}</span>`).join("")}
+        ${reg.price != null ? `<span class="wl"><i style="background:${CAT_COLORS.price}"></i>💰 시세 ${reg.price}</span>` : ""}
+      </div>
+      <div class="why-line">
+        <b>${CAT_LABELS[top3[0].k]}</b>이(가) 점수를 제일 많이 끌어올렸어요.
+        ${low1.v < 55 ? `<b>${CAT_LABELS[low1.k]}</b>은(는) 약한 편이에요.` : ""}
+      </div>
+    </div>`;
+
   // ── 접어둔 숫자 ──
   const CATS = ["transport","develop","policy","supply","job","school","life","population","future"]
     .concat(reg.price != null ? ["price"] : []);
@@ -795,7 +894,7 @@ function showDetail(d, fresh) {
     const v = reg[c] != null ? reg[c] : 50;
     const measured = (c === "transport" && d.mx) || c === "price";
     return `<div class="cat-row" title="${CAT_DESC[c]}">
-      <span style="font-size:11px;color:var(--text2)">${CAT_LABELS[c]}${measured ? ' <span class="measured">실측</span>' : ""}</span>
+      <span style="font-size:11px;color:var(--text2)">${CAT_LABELS[c]}${measured ? ' <span class="measured">실측</span>' : ""}${WEIGHTS[c] ? ` <span class="wpct">${Math.round(WEIGHTS[c]*100)}%</span>` : (c === "price" ? ` <span class="wpct">${Math.round(PRICE_W*100)}%</span>` : "")}</span>
       <span class="cat-val" style="color:${CAT_COLORS[c]};font-size:11px;font-weight:600">${v}점</span>
     </div>
     <div class="bar-bg"><div class="bar-fill" style="width:${v}%;background:${CAT_COLORS[c]}"></div></div>`;
@@ -822,7 +921,6 @@ function showDetail(d, fresh) {
     : `<div style="font-size:11px;color:var(--text3);padding:6px 0">등록된 호재 정보가 없어요.</div>`;
 
   el.innerHTML = `
-    ${fresh ? `<div class="discover">✨ 새로운 동네를 열었어요! (${counts().sido + counts().sgg + counts().dong}곳째)</div>` : ""}
     <div class="card-head">
       <div>
         <div class="r-name">${d.name}</div>
@@ -837,6 +935,7 @@ function showDetail(d, fresh) {
       아래 내용은 <b>${d.from}</b> 기준이라 참고만 하세요.</div>`}
     <div class="beats">${beatsHTML}</div>
     ${tagsHTML ? `<div class="tags">${tagsHTML}</div>` : ""}
+    ${whyHTML}
     <button class="ai-btn">🔍 ${d.name} 더 자세히 보기 →</button>
 
     <details class="numbers">
@@ -882,45 +981,13 @@ function markSeen(code) {
   return true;                     // 처음 열어본 곳
 }
 
-// 레벨별 진행률 — 전체 3,504개 중 몇 개나 열었는지
-const TOTALS = { sido:17, sgg:250, dong:3504 };
-function counts() {
-  const c = { sido:0, sgg:0, dong:0 };
-  for (const k of seen) c[k.length === 2 ? "sido" : k.length === 5 ? "sgg" : "dong"]++;
-  return c;
-}
-
 function renderExplore() {
-  const c = counts();
-  const rows = [["시도","sido"], ["시군구","sgg"], ["동","dong"]].map(([label, k]) => {
-    const n = c[k], tot = TOTALS[k], pct = Math.min(100, n / tot * 100);
-    return `<div class="prog-row ${n >= tot ? "done" : ""}">
-      <div class="prog-top"><span>${label}</span><span><b>${n}</b> / ${tot}</span></div>
-      <div class="prog-bg"><div class="prog-fill" style="width:${pct}%"></div></div>
-    </div>`;
-  }).join("");
-  document.getElementById("prog").innerHTML = rows;
-
-  const t = todayPick();
-  document.getElementById("today").innerHTML = t
-    ? `🎯 오늘의 동네 — ${t.name}<small>아직 안 열어본 곳이에요</small>`
-    : `🎉 오늘 볼 곳은 다 봤어요<small>계속 둘러보셔도 좋아요</small>`;
-
   document.getElementById("favs").innerHTML = favs.length
     ? `<div class="fav-hd">⭐ 관심 지역 ${favs.length}곳</div>` + favs.map(f =>
         `<div class="fav-item" data-go="${f.code}">
           <span>${f.name}</span><span><b>${f.score}</b> <span class="fav-x" data-del="${f.code}">×</span></span>
         </div>`).join("")
     : "";
-}
-
-// 오늘의 동네 — 날짜로 고정되는 추천. 매번 바뀌면 목표가 안 된다.
-function todayPick() {
-  const pool = Object.keys(DATA).filter(c => c.length === 5 && !seen.has(c));
-  if (!pool.length) return null;
-  const day = Math.floor(Date.now() / 864e5);
-  const code = pool[day % pool.length];
-  return { code, name:DATA[code].name };
 }
 
 function toggleFav(code, name, score) {
@@ -939,13 +1006,10 @@ document.getElementById("favs").addEventListener("click", e => {
   const go = e.target.closest("[data-go]");
   if (go) flyToCode(go.dataset.go);
 });
-document.getElementById("today").addEventListener("click", () => {
-  const t = todayPick();
-  if (t) flyToCode(t.code);
-});
 
 // 코드로 그 지역 찾아 이동 + 카드 열기
 function flyToCode(code) {
+  code = String(code);
   for (const k of LEVELS) {
     const layer = layers[k];
     if (!layer) continue;
@@ -959,6 +1023,9 @@ function flyToCode(code) {
       return;
     }
   }
+  // 레이어에서 못 찾으면 좌표로라도 이동한다 (동 경계 로딩 실패 등)
+  const m = typeof METRICS !== "undefined" ? METRICS[code] : null;
+  if (m) map.setView([m.lat, m.lng], 13);
 }
 
 // ── GeoJSON 레이어 빌더 ──────────────────────────────────────
@@ -1057,16 +1124,129 @@ document.querySelectorAll(".chip").forEach(c => {
 });
 
 
+
+// ── 검색 ─────────────────────────────────────────────────────
+// 색인은 세 층 전부 담는다. 동 경계는 지연 로딩이라 레이어에서 이름을 못 얻어
+// data-metrics.js 에 넣어둔 name을 쓴다.
+const SEARCH_INDEX = (() => {
+  const out = [];
+  for (const code in DATA) {
+    if (code.length > 5) continue;                 // 동은 아래에서 따로
+    out.push({ code, name:DATA[code].name, lv:code.length === 2 ? "시도" : "시군구" });
+  }
+  if (typeof METRICS !== "undefined")
+    for (const code in METRICS)
+      if (METRICS[code].name) out.push({ code, name:METRICS[code].name, lv:"동" });
+  return out;
+})();
+
+// 같은 이름이 여러 곳 있다 — "대치"에는 강남 대치동과 진안 대치면이 다 걸린다.
+// 점수가 높은 쪽을 위로 올린다. 찾는 사람은 보통 알려진 동네를 찾는다.
+function searchScore(code) {
+  const L = lookup(code);
+  return L.reg ? L.reg.score : 0;
+}
+
+function searchRegions(q) {
+  q = q.trim().replace(/\s+/g, "");
+  if (!q) return [];
+  const exact = [], starts = [], has = [];
+  for (const r of SEARCH_INDEX) {
+    const i = r.name.indexOf(q);
+    if (r.name === q) exact.push(r);
+    else if (i === 0) starts.push(r);
+    else if (i > 0) has.push(r);
+  }
+  const byScore = (a, b) => searchScore(b.code) - searchScore(a.code)
+                         || a.name.length - b.name.length;
+  return exact.sort(byScore)
+    .concat(starts.sort(byScore))
+    .concat(has.sort(byScore))
+    .slice(0, 12);
+}
+
+const $q = document.getElementById("search");
+const $res = document.getElementById("search-results");
+const $x = document.getElementById("search-x");
+let selIdx = -1, curHits = [];
+
+function renderSearch() {
+  const q = $q.value;
+  $x.classList.toggle("on", !!q);
+  if (!q.trim()) { $res.innerHTML = ""; curHits = []; selIdx = -1; return; }
+
+  curHits = searchRegions(q);
+  if (!curHits.length) {
+    $res.innerHTML = `<div class="sr-none">찾는 동네가 없어요</div>`;
+    return;
+  }
+  $res.innerHTML = curHits.map((r, i) => {
+    const L = lookup(r.code);
+    const sc = L.reg ? getScore(L.reg) : null;
+    const st = sc != null ? scoreStyle(sc) : null;
+    const path = pathOf(r.code);
+    return `<div class="sr ${i === selIdx ? "sel" : ""}" data-code="${r.code}">
+      <div><div class="sr-name">${r.name}</div>
+        ${path ? `<div class="sr-path">${path}</div>` : ""}</div>
+      <div style="display:flex;align-items:center;gap:6px">
+        <span class="sr-lv">${r.lv}</span>
+        ${st ? `<span class="sr-score" style="color:${st.fill}">${sc}</span>` : ""}
+      </div>
+    </div>`;
+  }).join("");
+}
+
+function clearSearch() {
+  $q.value = ""; $res.innerHTML = ""; curHits = []; selIdx = -1;
+  $x.classList.remove("on");
+}
+
+$q.addEventListener("input", renderSearch);
+$x.addEventListener("click", () => { clearSearch(); $q.focus(); });
+$res.addEventListener("click", e => {
+  const el = e.target.closest("[data-code]");
+  if (!el) return;
+  goTo(el.dataset.code);
+});
+$q.addEventListener("keydown", e => {
+  if (e.key === "Escape") return clearSearch();
+  if (!curHits.length) return;
+  if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+    e.preventDefault();
+    selIdx = (selIdx + (e.key === "ArrowDown" ? 1 : -1) + curHits.length) % curHits.length;
+    renderSearch();
+    $res.children[selIdx]?.scrollIntoView({ block:"nearest" });
+  } else if (e.key === "Enter") {
+    e.preventDefault();
+    goTo(curHits[Math.max(selIdx, 0)].code);
+  }
+});
+
+// 검색 결과로 이동. 동이면 경계를 먼저 받아야 한다.
+function goTo(code) {
+  clearSearch();
+  $q.blur();
+  const need = String(code).length === 7;
+  (need && !layers.dong ? ensureDong() : Promise.resolve()).then(() => flyToCode(code));
+}
+
 // ── 모바일 바텀시트 ──────────────────────────────────────────
 // 좁은 화면에서는 카드가 지도 아래에서 올라온다. 손잡이를 끌거나 누르면
 // 펼쳐지고 접힌다. 넓은 화면에서는 그냥 사이드바라 아무 일도 하지 않는다.
 const sheet = document.getElementById("sidebar");
 const isMobile = () => window.matchMedia("(max-width:720px)").matches;
 
-function openSheet()  { if (isMobile()) sheet.classList.remove("closed"), sheet.classList.add("open"); }
-function closeSheet() { if (isMobile()) sheet.classList.remove("open"), sheet.classList.add("closed"); }
-function toggleSheet() { sheet.classList.contains("open") ? shrinkSheet() : openSheet(); }
-function shrinkSheet() { sheet.classList.remove("open", "closed"); }
+// 시트 높이가 바뀌면 Leaflet에 크기를 다시 재게 한다.
+// 이걸 안 하면 지도가 예전 크기를 기억해 타일이 어긋난다.
+function syncMap() {
+  document.body.classList.toggle("sheet-open", sheet.classList.contains("open"));
+  document.body.classList.toggle("sheet-closed", sheet.classList.contains("closed"));
+  setTimeout(() => map.invalidateSize({ pan:false }), 300);
+}
+function openSheet()  { if (!isMobile()) return; sheet.classList.remove("closed"); sheet.classList.add("open"); syncMap(); }
+function closeSheet() { if (!isMobile()) return; sheet.classList.remove("open"); sheet.classList.add("closed"); syncMap(); }
+function shrinkSheet() { sheet.classList.remove("open", "closed"); syncMap(); }
+function toggleSheet() { sheet.classList.contains("open") ? closeSheet() : openSheet(); }
 
 const handle = document.getElementById("sheet-handle");
 let dragY = null, dragH = 0;
@@ -1088,7 +1268,9 @@ handle.addEventListener("touchend", () => {
   if (ratio > 0.6) sheet.classList.add("open");
   else if (ratio < 0.25) sheet.classList.add("closed");
   dragY = null;
+  syncMap();
 });
+window.addEventListener("resize", () => map.invalidateSize({ pan:false }));
 
 renderExplore();
 
