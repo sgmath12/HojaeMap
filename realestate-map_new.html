@@ -442,12 +442,26 @@ function lookup(code) {
     // 시도에서 물려받을 때는 시도 점수가 아니라 '외곽 기준값'을 쓴다.
     // 시도 점수는 판교·천안 같은 상위 지역이 끌어올린 값이라 그대로 쓰면
     // 이천시가 서울 양천구와 동점이 되는 일이 생긴다. (SIDO_BASE 주석 참고)
-    const base = (p.length === 2 && typeof SIDO_BASE !== "undefined" && SIDO_BASE[p])
-      ? SIDO_BASE[p] : DATA[p];
-    return { reg:base, own:false, from:DATA[p].name };
+    if (p.length === 2 && typeof SIDO_BASE !== "undefined" && SIDO_BASE[p])
+      return { reg:SIDO_BASE[p], own:false, from:DATA[p].name };
+    // 시군구 → 동도 같은 문제가 있어 일정 비율만큼 낮춘다. (SGG_DECAY 주석 참고)
+    if (p.length === 5 && typeof SGG_DECAY !== "undefined")
+      return { reg:decay(DATA[p], SGG_DECAY[p] || SGG_DECAY_DEFAULT),
+               own:false, from:DATA[p].name };
+    return { reg:DATA[p], own:false, from:DATA[p].name };
   }
   return { reg:null, own:false, from:null };
 }
+// 점수만 비율로 낮춘 사본. 이름·태그·뉴스는 그대로 둔다.
+const DECAY_KEYS = ["score","transport","develop","policy","supply",
+                    "job","school","life","population","future"];
+function decay(reg, k) {
+  const o = Object.assign({}, reg);
+  for (const key of DECAY_KEYS)
+    if (typeof o[key] === "number") o[key] = Math.round(o[key] * k);
+  return o;
+}
+
 // "서울특별시 › 강남구" 형태의 상위 경로
 function pathOf(code) {
   code = String(code);
@@ -512,7 +526,11 @@ mapArea.addEventListener("mousemove", e => {
 function showTip(d, e) {
   document.getElementById("htip-name").textContent = d.name;
   document.getElementById("htip-path").textContent = d.path;
-  if (d.view) {
+  if (fogOn && !isSeen(d.code)) {
+    document.getElementById("htip-score").textContent = "눌러서 열어보기";
+    document.getElementById("htip-grade").textContent = "";
+    document.getElementById("htip-inh").textContent = "";
+  } else if (d.view) {
     const sc = getScore(d.view);
     document.getElementById("htip-score").textContent = sc + "점";
     document.getElementById("htip-grade").textContent = scoreStyle(sc).grade;
@@ -688,12 +706,14 @@ function buildStory(d) {
 const DISCLAIMER = `<b>실측</b> 표시가 붙은 값만 좌표로 계산된 것이고, 나머지는
   공개된 개발계획 등을 근거로 한 추정치예요. 투자 판단 근거로 쓰면 안 돼요.`;
 
-function showDetail(d) {
+function showDetail(d, fresh) {
   const el = document.getElementById("detail");
   if (!d.reg) {
-    el.innerHTML = `<div class="r-name">${d.name}</div>
+    el.innerHTML = `${fresh ? `<div class="discover">✨ 새로운 동네를 열었어요!</div>` : ""}
+      <div class="r-name">${d.name}</div>
       <div class="r-path">${d.path}</div>
       <div class="ph" style="padding-top:40px">📭<br>여긴 아직 정보를<br>모으는 중이에요</div>`;
+    document.getElementById("sheet-peek").textContent = d.name;
     return;
   }
   const reg = d.view, sc = getScore(reg), st = scoreStyle(sc);
@@ -745,6 +765,7 @@ function showDetail(d) {
     : `<div style="font-size:11px;color:var(--text3);padding:6px 0">등록된 호재 정보가 없어요.</div>`;
 
   el.innerHTML = `
+    ${fresh ? `<div class="discover">✨ 새로운 동네를 열었어요! (${counts().sido + counts().sgg + counts().dong}곳째)</div>` : ""}
     <div class="card-head">
       <div>
         <div class="r-name">${d.name}</div>
@@ -753,6 +774,8 @@ function showDetail(d) {
       <div class="score-badge" style="background:${st.cardBg};color:${st.fill}"
            title="종합 호재지수 ${sc}점 · ${st.grade}">${sc}</div>
     </div>
+    <button class="fav-btn ${isFav(d.code) ? "on" : ""}" id="fav-btn"
+      style="margin-bottom:12px">${isFav(d.code) ? "⭐ 관심 지역" : "☆ 관심 지역에 추가"}</button>
     ${d.own ? "" : `<div class="inh-note">ℹ️ <b>${d.name}</b> 자체 정보는 아직 모으는 중이에요.
       아래 내용은 <b>${d.from}</b> 기준이라 참고만 하세요.</div>`}
     <div class="beats">${beatsHTML}</div>
@@ -767,10 +790,131 @@ function showDetail(d) {
       <div class="news-hd">원본 호재 / 악재</div>${newsHTML}
     </details>
     <div class="disclaimer">${DISCLAIMER}</div>`;
+
+  const fb = document.getElementById("fav-btn");
+  if (fb) fb.addEventListener("click", () => {
+    const on = toggleFav(d.code, d.name, sc);
+    fb.classList.toggle("on", on);
+    fb.textContent = on ? "⭐ 관심 지역" : "☆ 관심 지역에 추가";
+  });
+  document.getElementById("sheet-peek").textContent = `${d.name} · ${sc}점`;
+}
+
+
+// ── 탐험 기록 ────────────────────────────────────────────────
+// 눌러본 동네를 기억한다. 안 가본 곳은 흐릿하게 두고, 누르면 열린다.
+// 데이터가 비어 있는 곳도 "나쁜 동네"가 아니라 "아직 안 열어본 곳"이 된다.
+const LS = { seen:"hojae.seen", fav:"hojae.fav", fog:"hojae.fog" };
+const readLS = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } };
+const writeLS = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
+
+let seen = new Set(readLS(LS.seen, []));
+let favs = readLS(LS.fav, []);
+let fogOn = readLS(LS.fog, true);
+
+const saveSeen = () => writeLS(LS.seen, [...seen]);
+const saveFavs = () => writeLS(LS.fav, favs);
+
+// 코드로 이름 찾기 — 관심 목록 표시용
+const NAME_BY_CODE = {};
+function remember(feature) { NAME_BY_CODE[String(feature.properties.code)] = feature.properties.name; }
+
+function isSeen(code) { return seen.has(String(code)); }
+function markSeen(code) {
+  code = String(code);
+  if (seen.has(code)) return false;
+  seen.add(code); saveSeen(); renderExplore();
+  return true;                     // 처음 열어본 곳
+}
+
+// 레벨별 진행률 — 전체 3,504개 중 몇 개나 열었는지
+const TOTALS = { sido:17, sgg:250, dong:3504 };
+function counts() {
+  const c = { sido:0, sgg:0, dong:0 };
+  for (const k of seen) c[k.length === 2 ? "sido" : k.length === 5 ? "sgg" : "dong"]++;
+  return c;
+}
+
+function renderExplore() {
+  const c = counts();
+  const rows = [["시도","sido"], ["시군구","sgg"], ["동","dong"]].map(([label, k]) => {
+    const n = c[k], tot = TOTALS[k], pct = Math.min(100, n / tot * 100);
+    return `<div class="prog-row ${n >= tot ? "done" : ""}">
+      <div class="prog-top"><span>${label}</span><span><b>${n}</b> / ${tot}</span></div>
+      <div class="prog-bg"><div class="prog-fill" style="width:${pct}%"></div></div>
+    </div>`;
+  }).join("");
+  document.getElementById("prog").innerHTML = rows;
+
+  const t = todayPick();
+  document.getElementById("today").innerHTML = t
+    ? `🎯 오늘의 동네 — ${t.name}<small>아직 안 열어본 곳이에요</small>`
+    : `🎉 오늘 볼 곳은 다 봤어요<small>계속 둘러보셔도 좋아요</small>`;
+
+  document.getElementById("favs").innerHTML = favs.length
+    ? `<div class="fav-hd">⭐ 관심 지역 ${favs.length}곳</div>` + favs.map(f =>
+        `<div class="fav-item" data-go="${f.code}">
+          <span>${f.name}</span><span><b>${f.score}</b> <span class="fav-x" data-del="${f.code}">×</span></span>
+        </div>`).join("")
+    : "";
+}
+
+// 오늘의 동네 — 날짜로 고정되는 추천. 매번 바뀌면 목표가 안 된다.
+function todayPick() {
+  const pool = Object.keys(DATA).filter(c => c.length === 5 && !seen.has(c));
+  if (!pool.length) return null;
+  const day = Math.floor(Date.now() / 864e5);
+  const code = pool[day % pool.length];
+  return { code, name:DATA[code].name };
+}
+
+function toggleFav(code, name, score) {
+  const i = favs.findIndex(f => f.code === code);
+  if (i >= 0) favs.splice(i, 1);
+  else favs.push({ code, name, score });
+  saveFavs(); renderExplore();
+  return i < 0;
+}
+const isFav = code => favs.some(f => f.code === code);
+
+// 관심 목록 클릭 → 그 지역으로 이동
+document.getElementById("favs").addEventListener("click", e => {
+  const del = e.target.closest("[data-del]");
+  if (del) { e.stopPropagation(); toggleFav(del.dataset.del); return; }
+  const go = e.target.closest("[data-go]");
+  if (go) flyToCode(go.dataset.go);
+});
+document.getElementById("today").addEventListener("click", () => {
+  const t = todayPick();
+  if (t) flyToCode(t.code);
+});
+document.getElementById("fog-toggle").addEventListener("change", e => {
+  fogOn = e.target.checked; writeLS(LS.fog, fogOn); refreshStyles();
+});
+
+// 코드로 그 지역 찾아 이동 + 카드 열기
+function flyToCode(code) {
+  for (const k of LEVELS) {
+    const layer = layers[k];
+    if (!layer) continue;
+    let hit = null;
+    layer.eachLayer(l => { if (String(l.feature.properties.code) === String(code)) hit = l; });
+    if (hit) {
+      map.fitBounds(hit.getBounds(), { maxZoom:code.length === 5 ? 11 : 13 });
+      const d = info(hit.feature);
+      markSeen(d.code); showDetail(d); refreshStyles();
+      openSheet();
+      return;
+    }
+  }
 }
 
 // ── GeoJSON 레이어 빌더 ──────────────────────────────────────
-function geoStyle(reg, weight) {
+function geoStyle(reg, weight, code) {
+  // 아직 안 열어본 곳은 안개 — 점수를 숨긴다. 색이 곧 평가라서,
+  // 안 열어본 동네가 "나쁜 곳"이 아니라 "모르는 곳"으로 보이게 한다.
+  if (fogOn && code && !isSeen(code))
+    return { fillColor:"#8f96a6", fillOpacity:0.24, color:"#aeb4c2", weight, opacity:0.55 };
   if (!reg) return { fillColor:"#ccc", fillOpacity:0.15, color:"#bbb", weight };
   const st = scoreStyle(getScore(reg));
   return { fillColor:st.fill, fillOpacity:st.op, color:st.stroke, weight, opacity:0.9 };
@@ -778,12 +922,19 @@ function geoStyle(reg, weight) {
 
 function buildLayer(geojson, weight) {
   return L.geoJSON(geojson, {
-    style: f => geoStyle(info(f).view, weight),
+    style: f => geoStyle(info(f).view, weight, String(f.properties.code)),
     onEachFeature: (f, layer) => {
+      remember(f);
       const d = info(f);
-      const op = () => d.view ? scoreStyle(getScore(d.view)).op : 0.15;
+      const op = () => (fogOn && !isSeen(d.code)) ? 0.24
+                     : d.view ? scoreStyle(getScore(d.view)).op : 0.15;
       layer.on({
-        click:     () => showDetail(d),
+        click: () => {
+          const fresh = markSeen(d.code);
+          showDetail(d, fresh);
+          if (fresh) layer.setStyle(geoStyle(d.view, weight, d.code));
+          openSheet();
+        },
         mouseover: e  => { showTip(d, e); layer.setStyle({ weight:weight+2, fillOpacity:Math.min(op()+0.18, 0.94) }); layer.bringToFront(); },
         mouseout:  () => { hideTip(); layer.setStyle({ weight, fillOpacity:op() }); }
       });
@@ -848,7 +999,7 @@ map.on("zoomend", updateLayers);
 // ── 필터 ────────────────────────────────────────────────────
 function refreshStyles() {
   LEVELS.forEach(k => {
-    if (layers[k]) layers[k].setStyle(f => geoStyle(info(f).view, WEIGHT[k]));
+    if (layers[k]) layers[k].setStyle(f => geoStyle(info(f).view, WEIGHT[k], String(f.properties.code)));
   });
 }
 document.querySelectorAll(".chip").forEach(c => {
@@ -857,6 +1008,43 @@ document.querySelectorAll(".chip").forEach(c => {
     c.classList.add("on"); curFilter = c.dataset.c; refreshStyles();
   });
 });
+
+
+// ── 모바일 바텀시트 ──────────────────────────────────────────
+// 좁은 화면에서는 카드가 지도 아래에서 올라온다. 손잡이를 끌거나 누르면
+// 펼쳐지고 접힌다. 넓은 화면에서는 그냥 사이드바라 아무 일도 하지 않는다.
+const sheet = document.getElementById("sidebar");
+const isMobile = () => window.matchMedia("(max-width:720px)").matches;
+
+function openSheet()  { if (isMobile()) sheet.classList.remove("closed"), sheet.classList.add("open"); }
+function closeSheet() { if (isMobile()) sheet.classList.remove("open"), sheet.classList.add("closed"); }
+function toggleSheet() { sheet.classList.contains("open") ? shrinkSheet() : openSheet(); }
+function shrinkSheet() { sheet.classList.remove("open", "closed"); }
+
+const handle = document.getElementById("sheet-handle");
+let dragY = null, dragH = 0;
+handle.addEventListener("click", e => { if (dragY === null) toggleSheet(); });
+handle.addEventListener("touchstart", e => {
+  dragY = e.touches[0].clientY; dragH = sheet.offsetHeight;
+  sheet.style.transition = "none";
+}, { passive:true });
+handle.addEventListener("touchmove", e => {
+  if (dragY === null) return;
+  const h = Math.max(88, Math.min(window.innerHeight * 0.88, dragH + (dragY - e.touches[0].clientY)));
+  sheet.style.height = h + "px";
+}, { passive:true });
+handle.addEventListener("touchend", () => {
+  if (dragY === null) return;
+  const ratio = sheet.offsetHeight / window.innerHeight;
+  sheet.style.transition = ""; sheet.style.height = "";
+  sheet.classList.remove("open", "closed");
+  if (ratio > 0.6) sheet.classList.add("open");
+  else if (ratio < 0.25) sheet.classList.add("closed");
+  dragY = null;
+});
+
+document.getElementById("fog-toggle").checked = fogOn;
+renderExplore();
 
 // ── 데이터 로드 ──────────────────────────────────────────────
 function load(url) {
