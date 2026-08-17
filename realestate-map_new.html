@@ -235,6 +235,7 @@ html,body { height:100%; font-family:'Noto Sans KR',sans-serif; overflow:hidden;
   letter-spacing:-0.2px; transition:opacity 0.15s;
 }
 .ai-btn:hover { opacity:0.78; }
+.ver { opacity:0.5; font-size:8px; }
 .disclaimer { font-size:9px; color:var(--text3); line-height:1.7; margin-top:12px; text-align:center; }
 #sidebar::-webkit-scrollbar { width:3px; }
 #sidebar::-webkit-scrollbar-thumb { background:var(--border2); border-radius:2px; }
@@ -421,6 +422,8 @@ html,body { height:100%; font-family:'Noto Sans KR',sans-serif; overflow:hidden;
 <!-- 실거래가. tools/fetch-prices.py 를 돌려야 생기며, 없어도 지도는 동작합니다. -->
 <script src="data-prices.js?v=20260817b" onerror="void 0"></script>
 <script>
+const APP_VERSION = "v2026.08.17b";
+
 // ── 7단계 색상 ───────────────────────────────────────────────
 function scoreStyle(s) {
   if (s >= 90) return { fill:"#003fa5", stroke:"#002b80", op:0.78, cardBg:"#ccd9f5", cardText:"#003fa5", grade:"최상 호재" };
@@ -914,7 +917,7 @@ function showDetail(d, fresh) {
     <div class="beats">${beatsHTML}</div>
     ${tagsHTML ? `<div class="tags">${tagsHTML}</div>` : ""}
     ${whyHTML}
-    <button class="ai-btn">🔍 ${d.name} 더 자세히 보기 →</button>
+    <button class="ai-btn" id="more-btn">📊 ${d.name} 숫자로 자세히 보기 →</button>
 
     <details class="numbers">
       <summary>숫자로 보기</summary>
@@ -923,7 +926,16 @@ function showDetail(d, fresh) {
       ${d.mx ? `<div class="news-hd">실측 정보 <span style="text-transform:none;font-weight:400">· 좌표 계산</span></div>${measuredHTML}` : ""}
       <div class="news-hd">원본 호재 / 악재</div>${newsHTML}
     </details>
-    <div class="disclaimer">${DISCLAIMER}</div>`;
+    <div class="disclaimer">${DISCLAIMER}<br><span class="ver">${APP_VERSION}</span></div>`;
+
+  const mb = document.getElementById("more-btn");
+  if (mb) mb.addEventListener("click", () => {
+    const box = el.querySelector(".numbers");
+    if (!box) return;
+    box.open = true;
+    openSheet();
+    box.scrollIntoView({ behavior:"smooth", block:"start" });
+  });
 
   const fb = document.getElementById("fav-btn");
   if (fb) fb.addEventListener("click", () => {
