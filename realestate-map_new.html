@@ -148,6 +148,26 @@ html,body { height:100%; font-family:'Noto Sans KR',sans-serif; overflow:hidden;
 .t-future    { background:#e3eaf8; color:#003fa5; }
 .ntext { font-size:12px; color:var(--text); line-height:1.55; }
 .ndate { font-size:10px; color:var(--text3); margin-top:2px; }
+.ndate a { color:var(--text2); }
+
+/* 실측 정보 — 좌표로 계산된 값 */
+.measured {
+  display:inline-block; font-size:8px; font-weight:700; vertical-align:middle;
+  background:#e8f5e9; color:#2e7d32; border-radius:3px; padding:1px 4px; margin-left:3px;
+}
+.mx-grid { margin-bottom:8px; }
+.mx-item {
+  display:flex; justify-content:space-between; align-items:baseline;
+  font-size:11px; color:var(--text2); padding:5px 0;
+  border-bottom:1px solid var(--border);
+}
+.mx-item:last-child { border-bottom:none; }
+.mx-item b { color:var(--text); font-weight:600; }
+.mx-item small { color:var(--text3); font-weight:400; }
+.mx-note {
+  background:var(--bg3); border-radius:6px; padding:7px 10px;
+  font-size:9px; color:var(--text2); line-height:1.65; margin-bottom:14px;
+}
 .ai-btn {
   display:block; width:100%; margin-top:14px; padding:11px;
   background:var(--text); color:white; border:none; border-radius:var(--radius-sm);
@@ -220,6 +240,9 @@ html,body { height:100%; font-family:'Noto Sans KR',sans-serif; overflow:hidden;
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://unpkg.com/topojson-client@3/dist/topojson-client.min.js"></script>
 <script src="data-regions.js"></script>
+<script src="data-metrics.js"></script>
+<!-- 실거래가. tools/fetch-prices.py 를 돌려야 생기며, 없어도 지도는 동작합니다. -->
+<script src="data-prices.js" onerror="void 0"></script>
 <script>
 // ── 7단계 색상 ───────────────────────────────────────────────
 function scoreStyle(s) {
@@ -276,11 +299,26 @@ function pathOf(code) {
   if (code.length >= 7 && DATA[code.slice(0,5)]) out.push(DATA[code.slice(0,5)].name);
   return out.join(" › ");
 }
+// ── 실측 지표 ────────────────────────────────────────────────
+// data-metrics.js 는 행정동 3,504개 전부에 대해 좌표로 계산된 값을 담습니다.
+// 이 중 transport(역세권)만 손으로 매긴 점수를 대체합니다. school_access·
+// life_density 는 이름이 뜻하는 것과 재는 것이 달라 참고 정보로만 씁니다.
+const HAS_METRICS = typeof METRICS !== "undefined";
+const HAS_PRICES  = typeof PRICES  !== "undefined";
+
+function metricsFor(code) {
+  return (HAS_METRICS && code.length === 7) ? METRICS[code] : null;
+}
+
 // GeoJSON feature에서 필요한 값만 뽑아 정규화
 function info(f) {
   const p = f.properties;
-  const L = lookup(p.code);
-  return { code:String(p.code), name:p.name, reg:L.reg, own:L.own, from:L.from, path:pathOf(p.code) };
+  const code = String(p.code);
+  const L = lookup(code);
+  const mx = metricsFor(code);
+  // 역세권은 상속값이 아니라 그 동의 실제 계산값을 쓴다
+  const view = L.reg ? (mx ? Object.assign({}, L.reg, { transport:mx.transport }) : L.reg) : null;
+  return { code, name:p.name, reg:L.reg, view, mx, own:L.own, from:L.from, path:pathOf(code) };
 }
 
 // ── 지도 초기화 ─────────────────────────────────────────────
@@ -307,11 +345,14 @@ mapArea.addEventListener("mousemove", e => {
 function showTip(d, e) {
   document.getElementById("htip-name").textContent = d.name;
   document.getElementById("htip-path").textContent = d.path;
-  if (d.reg) {
-    const sc = getScore(d.reg);
+  if (d.view) {
+    const sc = getScore(d.view);
     document.getElementById("htip-score").textContent = sc + "점";
     document.getElementById("htip-grade").textContent = scoreStyle(sc).grade;
-    document.getElementById("htip-inh").textContent = d.own ? "" : `${d.from} 기준 참고값`;
+    const notes = [];
+    if (d.mx) notes.push(`역까지 ${d.mx.station_m}m`);
+    if (!d.own) notes.push(`${d.from} 기준 참고값`);
+    document.getElementById("htip-inh").textContent = notes.join(" · ");
   } else {
     document.getElementById("htip-score").textContent = "데이터 준비중";
     document.getElementById("htip-grade").textContent = "";
@@ -322,9 +363,32 @@ function showTip(d, e) {
 }
 function hideTip() { htip.style.display = "none"; }
 
+// ── 실거래가 조회 ────────────────────────────────────────────
+// 행정동(대치1동)과 법정동(대치동)이 1:1이 아니라서 이름을 느슨하게 맞춰보고,
+// 실패하면 시군구 중앙값으로 떨어집니다. 어느 쪽인지 라벨로 구분해 보여줍니다.
+function dongCandidates(name) {
+  return [name, name.replace(/([0-9]|·)+(가?동)$/, "동")];
+}
+function fmtWon(w) {
+  const eok = w / 100000000;
+  return eok >= 1 ? `${eok.toFixed(1)}억` : `${Math.round(w / 10000).toLocaleString()}만`;
+}
+function priceFor(d) {
+  if (!HAS_PRICES) return null;
+  const sgg = d.code.slice(0, 5);
+  if (d.code.length === 7) {
+    for (const c of dongCandidates(d.name)) {
+      const p = PRICES[`${sgg}|${c}`];
+      if (p) return { label:"평당가", text:`${fmtWon(p.won_per_py)} (${p.n}건)` };
+    }
+  }
+  const s = typeof PRICES_SGG !== "undefined" ? PRICES_SGG[sgg] : null;
+  return s ? { label:"평당가 · 구 평균", text:`${fmtWon(s.won_per_py)} (${s.n}건)` } : null;
+}
+
 // ── 사이드바 상세 ────────────────────────────────────────────
-const DISCLAIMER = `점수는 공개된 개발계획·역세권·학원가 분포 등을 근거로 한 추정치입니다.
-  실제 시세·공시가와 연동되지 않으며 투자 판단 근거로 쓸 수 없습니다.`;
+const DISCLAIMER = `<b>실측</b> 표시가 붙은 값만 좌표로 계산된 것이고, 나머지 점수는
+  공개된 개발계획 등을 근거로 한 추정치입니다. 투자 판단 근거로 쓸 수 없습니다.`;
 
 function showDetail(d) {
   const el = document.getElementById("detail");
@@ -334,7 +398,7 @@ function showDetail(d) {
       <div class="ph" style="padding-top:40px">📭<br>아직 수집된 호재 정보가 없습니다</div>`;
     return;
   }
-  const reg = d.reg, sc = getScore(reg), st = scoreStyle(sc);
+  const reg = d.view, sc = getScore(reg), st = scoreStyle(sc);
 
   const tagsHTML = (reg.tags || []).map(t =>
     `<span style="display:inline-block;background:rgba(0,0,0,0.07);border-radius:20px;padding:3px 9px;font-size:10px;font-weight:600;margin:2px 2px 2px 0;color:var(--text2)">${t}</span>`
@@ -344,19 +408,36 @@ function showDetail(d) {
   const CATS2 = ["job","school","life","population","future"];
   function barRow(c) {
     const v = reg[c] != null ? reg[c] : 50;
+    // 교통은 실측 대체분이라 배지를 붙여 손으로 매긴 값과 구분한다
+    const measured = c === "transport" && d.mx;
     return `<div class="cat-row" title="${CAT_DESC[c]}">
-      <span style="font-size:11px;color:var(--text2)">${CAT_LABELS[c]}</span>
+      <span style="font-size:11px;color:var(--text2)">${CAT_LABELS[c]}${measured ? ' <span class="measured">실측</span>' : ""}</span>
       <span class="cat-val" style="color:${CAT_COLORS[c]};font-size:11px;font-weight:600">${v}점</span>
     </div>
     <div class="bar-bg"><div class="bar-fill" style="width:${v}%;background:${CAT_COLORS[c]}"></div></div>`;
   }
+
+  // 좌표로 계산된 값 — 판단이 아니라 측정치
+  const price = priceFor(d);
+  const measuredHTML = d.mx ? `
+    <div class="news-hd">실측 정보 <span style="text-transform:none;font-weight:400">· 좌표 계산</span></div>
+    <div class="mx-grid">
+      <div class="mx-item"><span>가장 가까운 역</span><b>${d.mx.station_m.toLocaleString()}m</b></div>
+      <div class="mx-item"><span>반경 1km 역 개수</span><b>${d.mx.station_n}개</b></div>
+      <div class="mx-item"><span>학교 접근성</span><b>${d.mx.school_access} <small>/100</small></b></div>
+      <div class="mx-item"><span>생활 POI 밀도</span><b>${d.mx.life_density} <small>/100</small></b></div>
+      ${price ? `<div class="mx-item"><span>아파트 실거래 ${price.label}</span><b>${price.text}</b></div>` : ""}
+    </div>
+    <div class="mx-note">학교 접근성·POI 밀도는 <b>학군·라이프 점수가 아닙니다.</b>
+      반경 내 개수의 전국 백분위라 인구 밀도·상업 밀도를 함께 반영합니다.</div>` : "";
 
   const all = reg.news || [];
   const filtered = curFilter === "all" ? all : all.filter(n => n.t === curFilter);
   const news = filtered.length ? filtered : all;
   const newsHTML = news.length
     ? news.map(n => `<div class="news-item"><span class="ntag t-${n.t}">${CAT_LABELS[n.t]}</span>
-        <div class="ntext">${n.tx}</div><div class="ndate">${n.d}</div></div>`).join("")
+        <div class="ntext">${n.tx}</div>
+        <div class="ndate">${n.d}${n.src ? ` · <a href="${n.src}" target="_blank" rel="noopener">출처</a>` : ""}</div></div>`).join("")
     : `<div style="font-size:11px;color:var(--text3);padding:6px 0">등록된 호재 정보가 없습니다.</div>`;
 
   el.innerHTML = `
@@ -375,6 +456,7 @@ function showDetail(d) {
     <div class="cats">${CATS1.map(barRow).join("")}</div>
     <div class="news-hd">정성 지표</div>
     <div class="cats">${CATS2.map(barRow).join("")}</div>
+    ${measuredHTML}
     <div class="news-hd">주요 호재 / 악재</div>${newsHTML}
     <button class="ai-btn">🔍 ${d.name} AI 심층 분석 →</button>
     <div class="disclaimer">${DISCLAIMER}</div>`;
@@ -389,10 +471,10 @@ function geoStyle(reg, weight) {
 
 function buildLayer(geojson, weight) {
   return L.geoJSON(geojson, {
-    style: f => geoStyle(info(f).reg, weight),
+    style: f => geoStyle(info(f).view, weight),
     onEachFeature: (f, layer) => {
       const d = info(f);
-      const op = () => d.reg ? scoreStyle(getScore(d.reg)).op : 0.15;
+      const op = () => d.view ? scoreStyle(getScore(d.view)).op : 0.15;
       layer.on({
         click:     () => showDetail(d),
         mouseover: e  => { showTip(d, e); layer.setStyle({ weight:weight+2, fillOpacity:Math.min(op()+0.18, 0.94) }); layer.bringToFront(); },
@@ -459,7 +541,7 @@ map.on("zoomend", updateLayers);
 // ── 필터 ────────────────────────────────────────────────────
 function refreshStyles() {
   LEVELS.forEach(k => {
-    if (layers[k]) layers[k].setStyle(f => geoStyle(info(f).reg, WEIGHT[k]));
+    if (layers[k]) layers[k].setStyle(f => geoStyle(info(f).view, WEIGHT[k]));
   });
 }
 document.querySelectorAll(".chip").forEach(c => {
