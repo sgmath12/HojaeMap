@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>호재맵 — 부동산 호재 지도</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing:border-box; margin:0; padding:0; }
+:root {
+  --bg:#fff; --bg2:#f5f6f9; --bg3:#eef0f4;
+  --border:rgba(0,0,0,0.07); --border2:rgba(0,0,0,0.12);
+  --text:#111214; --text2:#5a5f6e; --text3:#9298a8;
+  --radius:12px; --radius-sm:8px; --shadow:0 4px 24px rgba(0,0,0,0.11);
+}
+html,body { height:100%; font-family:'Noto Sans KR',sans-serif; overflow:hidden; }
+#app { display:flex; height:100vh; }
+#map-area { flex:1; position:relative; }
+#map { width:100%; height:100%; }
+
+/* 호버 툴팁 */
+#htip {
+  position:absolute; pointer-events:none; z-index:2000;
+  background:rgba(10,11,15,0.88); color:white;
+  border-radius:10px; padding:7px 12px;
+  font-size:12px; font-weight:600; white-space:nowrap;
+  display:none; line-height:1.6;
+  box-shadow:0 4px 16px rgba(0,0,0,0.3);
+}
+#htip .tip-grade { font-size:10px; font-weight:500; opacity:0.75; margin-top:1px; }
+
+#top-bar {
+  position:absolute; top:16px; left:50%; transform:translateX(-50%);
+  background:var(--bg); border-radius:24px; padding:9px 20px;
+  box-shadow:var(--shadow); display:flex; align-items:center; gap:10px;
+  z-index:1000; white-space:nowrap; pointer-events:none;
+}
+#top-bar .dot { width:8px; height:8px; border-radius:50%; background:#003fa5; }
+#top-bar .logo { font-size:14px; font-weight:700; letter-spacing:-0.3px; }
+#top-bar .sub  { font-size:11px; color:var(--text3); }
+
+#zoom-badge {
+  position:absolute; top:16px; left:16px;
+  background:var(--bg); border-radius:20px; padding:6px 12px;
+  box-shadow:var(--shadow); font-size:11px; font-weight:600;
+  color:var(--text2); z-index:1000; display:flex; align-items:center; gap:6px;
+}
+.bdot { width:6px; height:6px; border-radius:50%; background:#003fa5; }
+
+#zoom-hint {
+  position:absolute; bottom:28px; left:50%; transform:translateX(-50%);
+  background:rgba(15,16,20,0.70); color:white; border-radius:20px;
+  padding:6px 14px; font-size:11px; z-index:1000; pointer-events:none;
+  white-space:nowrap; transition:opacity 0.5s;
+}
+#loading {
+  position:absolute; inset:0; background:#f5f6f9;
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  z-index:2000; gap:14px;
+}
+.spinner { width:36px; height:36px; border:3px solid var(--bg3); border-top-color:#1565c0; border-radius:50%; animation:spin 0.8s linear infinite; }
+#loading p { font-size:13px; color:var(--text3); }
+@keyframes spin { to { transform:rotate(360deg); } }
+#err {
+  display:none; position:absolute; top:70px; left:50%; transform:translateX(-50%);
+  background:#fff3cd; border:1px solid #ffc107; border-radius:var(--radius-sm);
+  padding:10px 16px; font-size:12px; color:#856404; z-index:1000;
+  max-width:420px; text-align:center; line-height:1.7;
+}
+
+/* 사이드바 */
+#sidebar {
+  width:292px; height:100vh; overflow-y:auto;
+  background:var(--bg); border-left:1px solid var(--border);
+  display:flex; flex-direction:column;
+  box-shadow:-2px 0 14px rgba(0,0,0,0.07);
+}
+#sb-brand { padding:18px 18px 14px; border-bottom:1px solid var(--border); }
+#sb-brand h1 { font-size:15px; font-weight:700; letter-spacing:-0.4px; }
+#sb-brand p  { font-size:11px; color:var(--text3); margin-top:3px; }
+#legend { padding:12px 18px; border-bottom:1px solid var(--border); }
+.sec-label { font-size:10px; font-weight:600; color:var(--text3); text-transform:uppercase; letter-spacing:0.6px; margin-bottom:8px; }
+.leg-steps { display:flex; gap:2px; margin-bottom:6px; border-radius:4px; overflow:hidden; }
+.leg-step { flex:1; height:12px; }
+.leg-lbls { display:flex; justify-content:space-between; font-size:9px; color:var(--text3); }
+#filters { padding:11px 18px; border-bottom:1px solid var(--border); }
+.chips { display:flex; flex-wrap:wrap; gap:5px; margin-top:6px; }
+.chip {
+  padding:4px 10px; border-radius:20px; font-size:11px; font-weight:500;
+  cursor:pointer; border:1px solid var(--border2); color:var(--text2);
+  background:transparent; transition:all 0.15s; user-select:none;
+}
+.chip:hover { background:var(--bg3); }
+.chip.on { background:#dce8f8; color:#1565c0; border-color:#90baea; }
+#detail { flex:1; padding:14px 18px; }
+.ph { text-align:center; color:var(--text3); font-size:12px; padding-top:55px; line-height:2.2; }
+.ph-icon { font-size:28px; }
+.r-name { font-size:16px; font-weight:700; letter-spacing:-0.4px; margin-bottom:3px; }
+.r-sub  { font-size:11px; color:var(--text3); margin-bottom:13px; }
+.score-card {
+  display:flex; justify-content:space-between; align-items:center;
+  border-radius:var(--radius-sm); padding:12px 14px; margin-bottom:14px;
+}
+.sc-num  { font-size:28px; font-weight:700; letter-spacing:-1px; line-height:1; }
+.sc-unit { font-size:13px; font-weight:400; }
+.sc-lbl  { font-size:10px; margin-top:3px; opacity:0.6; }
+.sc-grade { font-size:13px; font-weight:700; }
+.cats { margin-bottom:14px; }
+.cat-row { display:flex; justify-content:space-between; font-size:11px; color:var(--text2); margin-bottom:3px; }
+.cat-val { font-weight:600; }
+.bar-bg  { height:4px; border-radius:2px; background:var(--bg3); margin-bottom:8px; overflow:hidden; }
+.bar-fill { height:100%; border-radius:2px; }
+.news-hd { font-size:10px; font-weight:600; color:var(--text3); text-transform:uppercase; letter-spacing:0.6px; margin-bottom:9px; }
+.news-item { padding:8px 0; border-bottom:1px solid var(--border); }
+.news-item:last-child { border-bottom:none; }
+.ntag { display:inline-block; font-size:10px; font-weight:700; padding:2px 6px; border-radius:4px; margin-bottom:3px; }
+.t-transport { background:#dce8f8; color:#1565c0; }
+.t-develop   { background:#e0f0d0; color:#2e6b0e; }
+.t-policy    { background:#faecd6; color:#7a4800; }
+.t-supply    { background:#fbe8e8; color:#9e2a2a; }
+.t-job       { background:#f3e5f5; color:#6a1b9a; }
+.t-school    { background:#e0f7fa; color:#00838f; }
+.t-life      { background:#e8f5e9; color:#2e7d32; }
+.t-population{ background:#fff3e0; color:#e65100; }
+.t-future    { background:#e3eaf8; color:#003fa5; }
+.ntext { font-size:12px; color:var(--text); line-height:1.55; }
+.ndate { font-size:10px; color:var(--text3); margin-top:2px; }
+.ai-btn {
+  display:block; width:100%; margin-top:14px; padding:11px;
+  background:var(--text); color:white; border:none; border-radius:var(--radius-sm);
+  font-size:12px; font-weight:600; cursor:pointer; font-family:inherit;
+  letter-spacing:-0.2px; transition:opacity 0.15s;
+}
+.ai-btn:hover { opacity:0.78; }
+#sidebar::-webkit-scrollbar { width:3px; }
+#sidebar::-webkit-scrollbar-thumb { background:var(--border2); border-radius:2px; }
+.leaflet-container { font-family:'Noto Sans KR',sans-serif !important; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="map-area">
+    <div id="map"></div>
+    <div id="loading"><div class="spinner"></div><p>지도 데이터를 불러오는 중...</p></div>
+    <div id="err"></div>
+    <div id="htip"><span id="htip-name"></span><br><span id="htip-score"></span><div class="tip-grade" id="htip-grade"></div></div>
+    <div id="top-bar"><div class="dot"></div><span class="logo">호재맵</span><span class="sub">전국 부동산 호재 지도</span></div>
+    <div id="zoom-badge"><div class="bdot"></div><span id="zoom-label">시도 단위</span></div>
+    <div id="zoom-hint">🔍 스크롤로 확대하면 시군구 단위로 전환됩니다</div>
+  </div>
+  <div id="sidebar">
+    <div id="sb-brand"><h1>부동산 호재 지도</h1><p>지역을 클릭하면 상세 정보를 볼 수 있어요</p></div>
+    <div id="legend">
+      <div class="sec-label">호재 지수 (7단계)</div>
+      <div class="leg-steps">
+        <div class="leg-step" style="background:#6d0000"></div>
+        <div class="leg-step" style="background:#c62828"></div>
+        <div class="leg-step" style="background:#e65100"></div>
+        <div class="leg-step" style="background:#f9a825"></div>
+        <div class="leg-step" style="background:#2e7d32"></div>
+        <div class="leg-step" style="background:#1565c0"></div>
+        <div class="leg-step" style="background:#003fa5"></div>
+      </div>
+      <div class="leg-lbls"><span>~39</span><span>40</span><span>50</span><span>60</span><span>70</span><span>80</span><span>90+</span></div>
+    </div>
+    <div id="filters">
+      <div class="sec-label">유형 필터</div>
+      <div class="chips">
+        <div class="chip on" data-c="all">전체</div>
+        <div class="chip" data-c="transport">🚇 교통</div>
+        <div class="chip" data-c="develop">🏗 개발</div>
+        <div class="chip" data-c="policy">📋 정책</div>
+        <div class="chip" data-c="supply">🏠 공급</div>
+        <div class="chip" data-c="job">💼 직주근접</div>
+        <div class="chip" data-c="school">🏫 학군</div>
+        <div class="chip" data-c="life">🌱 라이프</div>
+        <div class="chip" data-c="population">👥 인구</div>
+        <div class="chip" data-c="future">🔮 미래가치</div>
+      </div>
+    </div>
+    <div id="detail"><div class="ph"><div class="ph-icon">📍</div><br>지역을 클릭하면<br>호재 정보가 표시됩니다</div></div>
+  </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+// ── 7단계 색상 ───────────────────────────────────────────────
+function scoreStyle(s) {
+  if (s >= 90) return { fill:"#003fa5", stroke:"#002b80", op:0.78, cardBg:"#ccd9f5", cardText:"#003fa5", grade:"최상 호재" };
+  if (s >= 80) return { fill:"#1565c0", stroke:"#0d47a1", op:0.70, cardBg:"#dce8f8", cardText:"#1565c0", grade:"강한 호재" };
+  if (s >= 70) return { fill:"#2e7d32", stroke:"#1b5e20", op:0.65, cardBg:"#e0f0d0", cardText:"#2e6b0e", grade:"긍정" };
+  if (s >= 60) return { fill:"#f9a825", stroke:"#c17900", op:0.62, cardBg:"#fff8e1", cardText:"#7a4800", grade:"약한 긍정" };
+  if (s >= 50) return { fill:"#e65100", stroke:"#bf360c", op:0.60, cardBg:"#faecd6", cardText:"#7a4800", grade:"중립" };
+  if (s >= 40) return { fill:"#c62828", stroke:"#8e0000", op:0.68, cardBg:"#fbe8e8", cardText:"#9e2a2a", grade:"위험" };
+  return               { fill:"#6d0000", stroke:"#3e0000", op:0.75, cardBg:"#f5d0d0", cardText:"#6b0000", grade:"심각" };
+}
+
+// ── 시도 데이터 (NAME_1 기준) ────────────────────────────────
+const SIDO = {
+  "Seoul":              { name:"서울",  score:82, transport:90, develop:78, policy:85, supply:75, lat:37.5665, lng:126.9780, news:[{t:"transport",tx:"GTX-A/B/C 순차 개통, 수도권 접근성 대폭 향상",d:"2025.03"},{t:"policy",tx:"재건축 안전진단 완화 — 강남·노원 정비 가속",d:"2025.02"},{t:"develop",tx:"용산 국제업무지구 2030 착공 검토 확정",d:"2025.01"},{t:"supply",tx:"입주 물량 전년比 22% 감소 → 전세 상방압력",d:"2025.03"}]},
+  "Gyeonggi-do":        { name:"경기",  score:70, transport:75, develop:72, policy:62, supply:68, lat:37.4138, lng:127.5183, news:[{t:"transport",tx:"GTX-D 예타 통과 — 김포·하남 수혜 확정",d:"2025.02"},{t:"transport",tx:"위례트램 착공 허가 — 위례중앙~복정~마천역",d:"2025.03"},{t:"develop",tx:"판교 오리역 테크노밸리 3단계 입주 본격화",d:"2025.02"},{t:"develop",tx:"분당 1기 신도시 재건축 특례법 용적률 상향",d:"2025.03"}]},
+  "Incheon":            { name:"인천",  score:65, transport:72, develop:68, policy:58, supply:62, lat:37.4563, lng:126.7052, news:[{t:"transport",tx:"제2경인선 착공 — 부평·계양 서울 직결",d:"2025.02"},{t:"develop",tx:"송도 바이오 클러스터 2단계 투자 유치 완료",d:"2025.01"}]},
+  "Gangwon-do":         { name:"강원",  score:50, transport:48, develop:55, policy:45, supply:52, lat:37.6550, lng:128.3000, news:[{t:"develop",tx:"강릉 특례시 추진 — 원주·춘천 광역 개발",d:"2025.02"}]},
+  "Chungcheongbuk-do":  { name:"충북",  score:52, transport:50, develop:55, policy:48, supply:54, lat:36.8000, lng:127.7000, news:[{t:"develop",tx:"청주 오송 바이오밸리 2단계 분양 추진",d:"2025.01"}]},
+  "Chungcheongnam-do":  { name:"충남",  score:58, transport:55, develop:60, policy:55, supply:60, lat:36.5184, lng:126.8000, news:[{t:"develop",tx:"천안아산 반도체 클러스터 국가산단 지정",d:"2025.02"}]},
+  "Sejong":             { name:"세종",  score:70, transport:68, develop:75, policy:72, supply:65, lat:36.4800, lng:127.2890, news:[{t:"policy",tx:"행정수도 완성 — 국회 세종 이전 논의 재개",d:"2025.03"},{t:"transport",tx:"세종~청주 BRT 노선 연장, 광역 접근성 확대",d:"2025.01"}]},
+  "Daejeon":            { name:"대전",  score:60, transport:62, develop:58, policy:55, supply:63, lat:36.3504, lng:127.3845, news:[{t:"transport",tx:"도시철도 2호선(트램) 2026년 개통 예정",d:"2025.02"},{t:"develop",tx:"충남대 인근 도시재생 뉴딜 사업 본격화",d:"2025.01"}]},
+  "Jeollabuk-do":       { name:"전북",  score:35, transport:33, develop:38, policy:33, supply:36, lat:35.7175, lng:127.1530, news:[{t:"supply",tx:"전주 인구 순유출 지속, 공실률 상승",d:"2025.03"}]},
+  "Jeollanam-do":       { name:"전남",  score:30, transport:28, develop:33, policy:30, supply:30, lat:34.8679, lng:126.9910, news:[{t:"supply",tx:"지방 소멸 위험 증가, 수요 감소 추세",d:"2025.03"}]},
+  "Gyeongsangbuk-do":   { name:"경북",  score:36, transport:33, develop:38, policy:36, supply:38, lat:36.4919, lng:128.8889, news:[{t:"develop",tx:"이차전지 특화단지 지정 — 구미·포항 수혜",d:"2025.01"}]},
+  "Gyeongsangnam-do":   { name:"경남",  score:45, transport:42, develop:48, policy:44, supply:46, lat:35.2380, lng:128.2500, news:[{t:"develop",tx:"창원 방산 수출 클러스터 조성 계획 확정",d:"2025.02"}]},
+  "Busan":              { name:"부산",  score:55, transport:52, develop:60, policy:50, supply:58, lat:35.1796, lng:129.0756, news:[{t:"develop",tx:"에코델타시티 스마트빌리지 2단계 착공 승인",d:"2025.01"},{t:"policy",tx:"부산형 도심복합사업 추가 구역 지정",d:"2025.02"}]},
+  "Ulsan":              { name:"울산",  score:48, transport:45, develop:50, policy:47, supply:50, lat:35.5384, lng:129.3114, news:[{t:"develop",tx:"현대차 전동화 전환 따른 산업구조 변화 주시",d:"2025.02"}]},
+  "Daegu":              { name:"대구",  score:38, transport:35, develop:40, policy:42, supply:35, lat:35.8714, lng:128.6014, news:[{t:"supply",tx:"미분양 7천세대 고착 — 건설사 할인분양 지속",d:"2025.03"},{t:"policy",tx:"규제지역 해제 후에도 수요 회복 더딤",d:"2025.01"}]},
+  "Gwangju":            { name:"광주",  score:42, transport:40, develop:45, policy:38, supply:44, lat:35.1595, lng:126.8526, news:[{t:"develop",tx:"AI 중심 산업단지 지정, 장기 고용 효과 기대",d:"2025.02"},{t:"supply",tx:"광산구 신규 공급 과잉, 전세가 하락세",d:"2025.03"}]},
+  "Jeju":               { name:"제주",  score:55, transport:50, develop:60, policy:52, supply:57, lat:33.4890, lng:126.4983, news:[{t:"develop",tx:"제2공항 환경 재평가 진행 중",d:"2025.02"},{t:"supply",tx:"외지인 투자 수요 감소 후 관망세 지속",d:"2025.03"}]},
+};
+// NAME_1 추가 폴백
+const SIDO_FB = { "North Chungcheong":"Chungcheongbuk-do","South Chungcheong":"Chungcheongnam-do","North Gyeongsang":"Gyeongsangbuk-do","South Gyeongsang":"Gyeongsangnam-do","North Jeolla":"Jeollabuk-do","South Jeolla":"Jeollanam-do","Gangwon":"Gangwon-do","Gyeonggi":"Gyeonggi-do" };
+
+// ── 시군구 데이터 (NAME_1 + NAME_2 복합 키) ──────────────────
+// 키 형식: "NAME_1|NAME_2"
+const SIGUNGU = {
+  // 서울 25구 — 실제 NAME_2 값 기준
+  "Seoul|Gangnam":     { name:"강남구",   score:95, transport:88, develop:92, policy:95, supply:85, job:98, school:99, life:92, population:88, future:96,
+    tags:["🔵 반도체 슈퍼사이클 수혜","🏆 전국 최고 학군","💰 강남 3구 핵심","🔨 재건축 대어 다수"],
+    news:[{t:"policy",tx:"압구정·대치 재건축 안전진단 완화 수혜",d:"2025.03"},{t:"develop",tx:"영동대로 지하화 복합개발 착공 준비",d:"2025.02"},{t:"transport",tx:"GTX-A/C 삼성역 복합환승센터 착공",d:"2025.01"},{t:"job",tx:"삼성전자 서초·역삼 R&D캠퍼스 도보권",d:"2025.02"},{t:"school",tx:"대치동 학원가 — 전국 1위 교육 인프라",d:"2025.01"}]},
+  "Seoul|Seocho":      { name:"서초구",   score:90, transport:85, develop:88, policy:90, supply:82, job:92, school:90, life:88, population:82, future:90,
+    tags:["💰 강남 3구 핵심","🔨 반포 재건축 대장주","🌳 서리풀공원 라이프"],
+    news:[{t:"policy",tx:"반포 재건축 이주 본격화 — 전세가 급등",d:"2025.03"},{t:"develop",tx:"서리풀터널 완공으로 교통 편의 향상",d:"2025.01"},{t:"job",tx:"서초 IT밸리·삼성 타운 인접",d:"2025.02"}]},
+  "Seoul|Songpa":      { name:"송파구",   score:87, transport:88, develop:82, policy:84, supply:80, job:82, school:82, life:90, population:84, future:84,
+    tags:["🏟 잠실 MICE 복합개발","🚇 위례트램 착공","🌊 한강·석촌호수 라이프"],
+    news:[{t:"transport",tx:"위례트램 마천역 연결 착공 확정",d:"2025.03"},{t:"develop",tx:"잠실 스포츠·MICE 복합개발 진행",d:"2025.02"},{t:"life",tx:"석촌호수·한강 수변 인프라 풍부",d:"2025.01"}]},
+  "Seoul|Yongsan":     { name:"용산구",   score:93, transport:85, develop:96, policy:90, supply:78, job:90, school:78, life:92, population:88, future:98,
+    tags:["🏙 용산 국제업무지구 2030","🌿 용산공원 개방","🚇 GTX 3개 노선 환승","🔮 10년 최대 개발 호재"],
+    news:[{t:"develop",tx:"용산 국제업무지구 2030 마스터플랜 확정",d:"2025.01"},{t:"policy",tx:"용산공원 부분 개방 — 주변 개발 기대감",d:"2025.02"},{t:"transport",tx:"GTX-A/B/C 환승 서울역 복합환승센터",d:"2025.01"},{t:"future",tx:"여의도~용산 금융벨트 형성 기대",d:"2025.02"}]},
+  "Seoul|Seongdong":   { name:"성동구",   score:85, transport:82, develop:88, policy:80, supply:76, job:85, school:72, life:95, population:92, future:88,
+    tags:["🔥 MZ세대 핫플 1위","🏗 성수 전략정비구역","☕ 카페·라이프 인프라 최상","👥 인구 순유입 급증"],
+    news:[{t:"develop",tx:"성수 전략정비구역 심의 통과 — 초고층 개발",d:"2025.03"},{t:"life",tx:"성수·서울숲 카페거리 — MZ세대 집결",d:"2025.02"},{t:"population",tx:"2030 인구 순유입 서울 1위",d:"2025.03"},{t:"job",tx:"성수 IT·패션 허브 — 스타트업 집적",d:"2025.02"}]},
+  "Seoul|Yeongdeungpo":{ name:"영등포구", score:80, transport:80, develop:80, policy:77, supply:75, job:88, school:65, life:80, population:75, future:80,
+    tags:["💹 여의도 금융허브","🏗 여의도 재정비 추진","🚇 신안산선 개통"],
+    news:[{t:"develop",tx:"여의도 국제금융지구 재정비 추진",d:"2025.02"},{t:"job",tx:"여의도 금융·증권 고용 밀집지",d:"2025.01"},{t:"transport",tx:"신안산선 여의도역 환승 수혜",d:"2025.02"}]},
+  "Seoul|Mapo":        { name:"마포구",   score:76, transport:80, develop:74, policy:75, supply:72, job:78, school:68, life:85, population:80, future:75,
+    tags:["📡 상암 DMC 미디어밸리","🌊 한강 라이프","👥 20-30대 인구 집중"],
+    news:[{t:"develop",tx:"상암 DMC 2단계 개발 계획 승인",d:"2025.02"},{t:"transport",tx:"GTX-B 마포구 통과 — 신촌 수혜",d:"2025.01"},{t:"life",tx:"망원·합정·홍대 상권 라이프 최상",d:"2025.01"}]},
+  "Seoul|Nowon":       { name:"노원구",   score:72, transport:70, develop:72, policy:76, supply:67, job:58, school:75, life:65, population:60, future:72,
+    tags:["🔨 상계·월계 재건축 대기","🏫 중계동 학원가 특수"],
+    news:[{t:"policy",tx:"상계·월계 재건축 안전진단 면제 적용",d:"2025.03"},{t:"transport",tx:"동북선 2026 개통 예정 — 노원~왕십리",d:"2025.02"},{t:"school",tx:"중계동 학원가 — 강남 대체 교육특구",d:"2025.01"}]},
+  "Seoul|Dongjak":     { name:"동작구",   score:72, transport:72, develop:70, policy:70, supply:66, job:72, school:68, life:78, population:70, future:74,
+    tags:["🌊 한강 조망권","🔮 GTX-C 흑석역 추진"],
+    news:[{t:"transport",tx:"GTX-C 흑석역 추진 논의",d:"2025.02"},{t:"life",tx:"한강 조망 단지 희소가치 부각",d:"2025.01"}]},
+  "Seoul|Yangcheon":   { name:"양천구",   score:70, transport:70, develop:68, policy:70, supply:65, job:65, school:88, life:68, population:65, future:72,
+    tags:["🏫 목동 학원가 특구","🔨 목동 재건축 대장"],
+    news:[{t:"policy",tx:"목동 재건축 심의 통과 단지 증가",d:"2025.03"},{t:"school",tx:"목동 학원가 — 서울 3대 교육특구",d:"2025.01"}]},
+  "Seoul|Gangseo":     { name:"강서구",   score:67, transport:70, develop:65, policy:64, supply:66, job:72, school:60, life:65, population:65, future:68,
+    tags:["✈️ 마곡 LG사이언스파크","🚇 대곡소사선 수혜"],
+    news:[{t:"job",tx:"마곡 LG사이언스파크·에어시티 고용 허브",d:"2025.02"},{t:"transport",tx:"마곡 대곡소사선 연결 수혜",d:"2025.02"}]},
+  "Seoul|Gandong":     { name:"강동구",   score:75, transport:76, develop:74, policy:73, supply:70, job:68, school:72, life:75, population:72, future:76,
+    tags:["🔮 고덕강일 개발 마무리","🚇 9호선 연장 수혜"],
+    news:[{t:"transport",tx:"9호선 연장 고덕 수혜",d:"2025.02"},{t:"develop",tx:"고덕강일 공공주택지구 입주 마무리",d:"2025.01"},{t:"future",tx:"둔촌주공 입주 후 지역 프리미엄 형성",d:"2025.03"}]},
+  "Seoul|Jung":        { name:"중구",     score:75, transport:78, develop:74, policy:73, supply:70, job:82, school:60, life:80, population:68, future:72,
+    tags:["🏙 도심 업무지구 핵심","🚇 교통 허브"],
+    news:[{t:"develop",tx:"서울역 일대 도심 재생사업 추진",d:"2025.02"},{t:"job",tx:"명동·을지로 업무지구 도보권",d:"2025.01"}]},
+  "Seoul|Jongro":      { name:"종로구",   score:73, transport:76, develop:72, policy:72, supply:68, job:80, school:65, life:78, population:65, future:70,
+    tags:["🏛 광화문 업무지구","🏗 세운지구 재정비"],
+    news:[{t:"develop",tx:"세운지구 재정비 사업 2단계 착공",d:"2025.01"},{t:"job",tx:"광화문·종로 업무지구 접근성 최상",d:"2025.01"}]},
+  "Seoul|Dobong":      { name:"도봉구",   score:63, transport:61, develop:62, policy:67, supply:59, job:52, school:60, life:62, population:55, future:62,
+    tags:["🔨 창동 재건축 추진"],
+    news:[{t:"policy",tx:"창동·쌍문 재건축 정비사업 추진",d:"2025.02"}]},
+  "Seoul|Eun-pyeong":  { name:"은평구",   score:62, transport:65, develop:60, policy:60, supply:62, job:55, school:58, life:65, population:58, future:60,
+    tags:["🚇 GTX-A 연신내역 수혜"],
+    news:[{t:"transport",tx:"GTX-A 연신내역 개통 수혜",d:"2025.02"}]},
+  "Seoul|Jungnang":    { name:"중랑구",   score:59, transport:61, develop:56, policy:58, supply:59, job:52, school:55, life:56, population:52, future:58,
+    tags:["🚇 동북선 예정"],
+    news:[{t:"transport",tx:"동북선 중랑 통과 예정",d:"2025.02"}]},
+  "Seoul|Seongbuk":    { name:"성북구",   score:66, transport:65, develop:65, policy:68, supply:63, job:60, school:68, life:68, population:60, future:64,
+    tags:["🔨 장위동 재개발 추진"],
+    news:[{t:"policy",tx:"장위동 재개발 사업 추진 중",d:"2025.02"}]},
+  "Seoul|Gwanak":      { name:"관악구",   score:60, transport:62, develop:58, policy:58, supply:60, job:62, school:60, life:62, population:65, future:58,
+    tags:["🎓 서울대 배후 수요"],
+    news:[{t:"transport",tx:"신림선 개통 후 수요 회복세",d:"2025.01"},{t:"population",tx:"서울대·고시촌 배후 안정 수요",d:"2025.01"}]},
+  "Seoul|Gwang-jin":   { name:"광진구",   score:72, transport:73, develop:70, policy:71, supply:69, job:70, school:68, life:78, population:72, future:70,
+    tags:["🌊 한강 조망","☕ 건대·뚝섬 라이프"],
+    news:[{t:"develop",tx:"건대 인근 상업지 개발 활성화",d:"2025.01"},{t:"life",tx:"뚝섬·한강 수변 레저 인프라",d:"2025.01"}]},
+  "Seoul|Dong-daemun": { name:"동대문구", score:65, transport:67, develop:63, policy:64, supply:63, job:65, school:58, life:65, population:60, future:65,
+    tags:["🚇 GTX-B 청량리 수혜"],
+    news:[{t:"transport",tx:"GTX-B 청량리역 환승 수혜",d:"2025.02"}]},
+  "Seoul|Gangbuk":     { name:"강북구",   score:57, transport:55, develop:56, policy:60, supply:55, job:50, school:52, life:58, population:50, future:55,
+    tags:["🔨 도심재생 뉴딜"],
+    news:[{t:"policy",tx:"강북 도심재생 뉴딜 사업 추진",d:"2025.01"}]},
+  "Seoul|Seodaemun":   { name:"서대문구", score:64, transport:66, develop:62, policy:63, supply:62, job:62, school:62, life:65, population:60, future:62,
+    tags:["🚇 GTX-A 연신내 인접"],
+    news:[{t:"transport",tx:"GTX-A 연신내역 인근 수혜",d:"2025.02"}]},
+  // 경기
+  "Gyeonggi-do|Seongnam":    { name:"성남시(분당·판교)", score:88, transport:85, develop:90, policy:82, supply:78, job:98, school:90, life:85, population:82, future:92,
+    tags:["🔵 반도체 슈퍼사이클 최대 수혜","🖥 판교 테크노밸리 2·3단계","🔨 분당 재건축 대장","🏫 분당 학원가 특구","💼 카카오·네이버·하이닉스 도보권"],
+    news:[{t:"develop",tx:"분당 재건축 특례법 — 용적률 대폭 상향",d:"2025.03"},{t:"develop",tx:"판교 오리역 테크노밸리 3단계 개발 본격화",d:"2025.01"},{t:"policy",tx:"1기 신도시 선도지구 성남 2곳 지정",d:"2025.03"},{t:"job",tx:"판교 테크밸리 카카오·네이버·크래프톤 集적",d:"2025.02"},{t:"future",tx:"SK하이닉스 용인 클러스터 배후 수혜",d:"2025.03"}]},
+  "Gyeonggi-do|Hanam":       { name:"하남시",   score:75, transport:82, develop:74, policy:68, supply:70, job:68, school:65, life:80, population:75, future:78,
+    tags:["🚇 GTX-D 강남 30분대","🌊 미사강변 한강 라이프","👥 신도시 인구 유입"],
+    news:[{t:"transport",tx:"GTX-D 하남 통과 — 강남 30분대 예상",d:"2025.02"},{t:"life",tx:"미사강변도시 한강 수변 인프라",d:"2025.01"},{t:"population",tx:"미사·감일 신도시 30대 인구 유입 지속",d:"2025.03"}]},
+  "Gyeonggi-do|Gwacheon":    { name:"과천시",   score:80, transport:76, develop:85, policy:83, supply:72, job:80, school:82, life:82, population:72, future:85,
+    tags:["🏗 과천 청사 부지 고밀개발","🔮 지식정보타운 확장","🏫 학군 우수"],
+    news:[{t:"develop",tx:"과천 청사 이전 부지 고밀개발 확정",d:"2025.02"},{t:"policy",tx:"과천지식정보타운 상업지 추가 지정",d:"2025.01"},{t:"future",tx:"과천~양재 테크밸리 확장 수혜",d:"2025.02"}]},
+  "Gyeonggi-do|Yongin":      { name:"용인시",   score:80, transport:70, develop:90, policy:72, supply:72, job:95, school:75, life:72, population:80, future:95,
+    tags:["🔵 SK하이닉스 반도체 클러스터","🏭 국내 최대 반도체 산단 착공","💼 고용 10만명 창출 예정","🔮 2030년 미래가치 최상"],
+    news:[{t:"develop",tx:"용인 반도체 클러스터 SK하이닉스 본격 착공",d:"2025.03"},{t:"job",tx:"반도체 산단 협력사 집적 — 고용 10만명 예상",d:"2025.03"},{t:"transport",tx:"GTX-A 동탄~수서 개통 수혜",d:"2025.02"},{t:"future",tx:"2030년 국내 최대 반도체 산업단지 완공 목표",d:"2025.01"}]},
+  "Gyeonggi-do|Goyang":      { name:"고양시",   score:63, transport:70, develop:62, policy:59, supply:61, job:62, school:62, life:68, population:60, future:65,
+    tags:["🚇 GTX-A 킨텍스역","🏙 창릉 3기 신도시"],
+    news:[{t:"transport",tx:"GTX-A 킨텍스역 개통 — 강남 20분대",d:"2025.02"},{t:"develop",tx:"창릉 3기 신도시 보상 착수",d:"2025.01"}]},
+  "Gyeonggi-do|Gimpo":       { name:"김포시",   score:56, transport:64, develop:52, policy:49, supply:53, job:52, school:52, life:58, population:55, future:60,
+    tags:["🚇 GTX-D 2030 개통 기대"],
+    news:[{t:"transport",tx:"GTX-D 김포 통과 — 2030년 개통 목표",d:"2025.02"}]},
+  "Gyeonggi-do|Namyangju":   { name:"남양주시", score:59, transport:62, develop:57, policy:53, supply:57, job:52, school:55, life:60, population:62, future:62,
+    tags:["🏗 왕숙 3기 신도시","🚇 GTX-B 예정"],
+    news:[{t:"develop",tx:"왕숙 3기 신도시 지구계획 승인",d:"2025.02"},{t:"transport",tx:"GTX-B 남양주 통과 예정",d:"2025.01"}]},
+  "Gyeonggi-do|Hwaseong":    { name:"화성시(동탄)", score:68, transport:72, develop:68, policy:62, supply:64, job:72, school:65, life:65, population:70, future:70,
+    tags:["🚇 GTX-A 동탄역","🏭 삼성전자 화성캠퍼스 인접"],
+    news:[{t:"transport",tx:"GTX-A 동탄역 환승 인프라 확충",d:"2025.02"},{t:"job",tx:"삼성전자 화성캠퍼스 — 반도체 고용 허브",d:"2025.01"}]},
+  "Gyeonggi-do|Suwon":       { name:"수원시",   score:66, transport:70, develop:64, policy:61, supply:66, job:72, school:65, life:68, population:65, future:68,
+    tags:["🏭 삼성전자 수원 R&D","🚇 GTX-C 환승 예정"],
+    news:[{t:"transport",tx:"수원 GTX-C 환승역 조성 계획 확정",d:"2025.02"},{t:"job",tx:"삼성전자 수원 R&D캠퍼스 고용 중심",d:"2025.01"}]},
+  "Gyeonggi-do|Anyang":      { name:"안양시",   score:62, transport:65, develop:60, policy:59, supply:62, job:62, school:62, life:62, population:58, future:62,
+    tags:["🚇 GTX-C 인덕원역"],
+    news:[{t:"transport",tx:"GTX-C 인덕원역 환승 수혜",d:"2025.02"}]},
+  "Gyeonggi-do|Gwangmyeong": { name:"광명시",   score:68, transport:72, develop:70, policy:66, supply:65, job:68, school:62, life:65, population:65, future:70,
+    tags:["🏗 광명시흥 신도시","🚇 신안산선 수혜"],
+    news:[{t:"develop",tx:"광명시흥 신도시 토지 보상 착수",d:"2025.02"},{t:"transport",tx:"신안산선 광명역 환승 수혜",d:"2025.01"}]},
+  "Gyeonggi-do|Bucheon":     { name:"부천시",   score:60, transport:63, develop:58, policy:57, supply:60, job:60, school:58, life:62, population:58, future:60,
+    tags:["🚇 대곡소사선 개통"],
+    news:[{t:"transport",tx:"대곡소사선 개통 수혜",d:"2025.01"}]},
+  "Gyeonggi-do|Guri":        { name:"구리시",   score:62, transport:64, develop:60, policy:60, supply:61, job:60, school:60, life:62, population:60, future:62,
+    tags:["🏗 갈매지구 개발"],
+    news:[{t:"develop",tx:"구리 갈매지구 2단계 개발 추진",d:"2025.01"}]},
+  // 인천
+  "Incheon|Yeonsu":   { name:"연수구(송도)", score:68, transport:70, develop:72, policy:62, supply:65, news:[{t:"develop",tx:"송도 바이오 클러스터 2단계 투자 유치",d:"2025.01"},{t:"transport",tx:"인천 1호선 연장 추진",d:"2025.02"}]},
+  "Incheon|Gyeyang":  { name:"계양구",       score:60, transport:65, develop:57, policy:56, supply:59, news:[{t:"transport",tx:"GTX-D 계양 통과 예정",d:"2025.02"}]},
+  // 부산
+  "Busan|Haeundae":   { name:"해운대구",  score:62, transport:60, develop:65, policy:58, supply:63, news:[{t:"develop",tx:"해운대 마린시티 추가 개발 계획",d:"2025.01"}]},
+};
+
+const CAT_LABELS = {
+  transport:"🚇 교통", develop:"🏗 개발", policy:"📋 정책", supply:"🏠 공급",
+  job:"💼 직주근접", school:"🏫 학군파워", life:"🌱 라이프", population:"👥 인구모멘텀", future:"🔮 미래가치"
+};
+const CAT_COLORS = {
+  transport:"#1565c0", develop:"#2e6b0e", policy:"#7a4800", supply:"#9e2a2a",
+  job:"#6a1b9a", school:"#00838f", life:"#388e3c", population:"#e65100", future:"#003fa5"
+};
+const CAT_DESC = {
+  transport:"GTX·지하철·버스 등 교통 인프라",
+  develop:"재개발·재건축·신도시 개발 사업",
+  policy:"규제완화·정비사업 정책 수혜",
+  supply:"입주물량·전세가 수급 상황",
+  job:"삼성·하이닉스·판교·여의도 등 대형 고용지 접근성",
+  school:"대치·목동·분당 학원가·명문교 밀집도",
+  life:"한강·공원·헬스·카페 라이프 인프라 밀도",
+  population:"MZ세대 유입·인구 순증·외국인 투자 트렌드",
+  future:"AI·반도체·바이오 산업 수혜, 재건축 연한, 미래 용적률"
+};
+let curFilter = "all";
+const ALL_CATS = ["transport","develop","policy","supply","job","school","life","population","future"];
+
+function getScore(reg) { return curFilter==="all" ? reg.score : (reg[curFilter]||reg.score); }
+
+// ── Feature → 데이터 매핑 ────────────────────────────────────
+function getSidoReg(f) {
+  const n1 = f.properties.NAME_1;
+  if (SIDO[n1]) return SIDO[n1];
+  if (SIDO_FB[n1] && SIDO[SIDO_FB[n1]]) return SIDO[SIDO_FB[n1]];
+  return null;
+}
+function getSigunguReg(f) {
+  const n1 = f.properties.NAME_1, n2 = f.properties.NAME_2;
+  const key = `${n1}|${n2}`;
+  if (SIGUNGU[key]) return SIGUNGU[key];
+  // 폴백: 시도 데이터 상속
+  return getSidoReg(f);
+}
+
+// ── 지도 초기화 ─────────────────────────────────────────────
+const map = L.map("map", { center:[36.2,127.9], zoom:7 });
+L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
+  attribution:'© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> © <a href="https://carto.com/">CARTO</a>',
+  subdomains:"abcd", maxZoom:19,
+}).addTo(map);
+
+// ── 툴팁 ────────────────────────────────────────────────────
+const htip = document.getElementById("htip");
+const mapArea = document.getElementById("map-area");
+mapArea.addEventListener("mousemove", e => {
+  if (htip.style.display === "none") return;
+  let x = e.clientX - mapArea.getBoundingClientRect().left + 14;
+  let y = e.clientY - mapArea.getBoundingClientRect().top - 10;
+  if (x + 160 > mapArea.offsetWidth) x -= 170;
+  htip.style.left = x+"px"; htip.style.top = y+"px";
+});
+
+function showTip(reg, e) {
+  const sc = getScore(reg);
+  const st = scoreStyle(sc);
+  document.getElementById("htip-name").textContent = reg.name;
+  document.getElementById("htip-score").textContent = sc+"점";
+  document.getElementById("htip-grade").textContent = st.grade;
+  htip.style.display = "block";
+  let x = e.originalEvent.clientX - mapArea.getBoundingClientRect().left + 14;
+  let y = e.originalEvent.clientY - mapArea.getBoundingClientRect().top - 10;
+  htip.style.left = x+"px"; htip.style.top = y+"px";
+}
+function hideTip() { htip.style.display = "none"; }
+
+// ── 사이드바 상세 ────────────────────────────────────────────
+function showDetail(reg) {
+  const sc = getScore(reg);
+  const st = scoreStyle(sc);
+
+  // 테마 태그
+  const tagsHTML = (reg.tags||[]).map(t =>
+    `<span style="display:inline-block;background:rgba(0,0,0,0.07);border-radius:20px;padding:3px 9px;font-size:10px;font-weight:600;margin:2px 2px 2px 0;color:var(--text2)">${t}</span>`
+  ).join("");
+
+  // 9개 지표 바
+  const CATS1 = ["transport","develop","policy","supply"];
+  const CATS2 = ["job","school","life","population","future"];
+  function barRow(c) {
+    const v = reg[c]||50;
+    return `<div class="cat-row" title="${CAT_DESC[c]}">
+      <span style="font-size:11px;color:var(--text2)">${CAT_LABELS[c]}</span>
+      <span class="cat-val" style="color:${CAT_COLORS[c]};font-size:11px;font-weight:600">${v}점</span>
+    </div>
+    <div class="bar-bg"><div class="bar-fill" style="width:${v}%;background:${CAT_COLORS[c]}"></div></div>`;
+  }
+
+  // 뉴스
+  const news = curFilter==="all" ? reg.news : reg.news.filter(n=>n.t===curFilter);
+  const newsHTML = (news.length?news:reg.news).map(n=>`
+    <div class="news-item"><span class="ntag t-${n.t}">${CAT_LABELS[n.t]}</span>
+    <div class="ntext">${n.tx}</div><div class="ndate">${n.d}</div></div>`).join("");
+
+  document.getElementById("detail").innerHTML = `
+    <div class="r-name">${reg.name}</div>
+    <div class="r-sub">호재지수 ${sc}점</div>
+    <div class="score-card" style="background:${st.cardBg}">
+      <div><div class="sc-num" style="color:${st.fill}">${sc}<span class="sc-unit">점</span></div>
+      <div class="sc-lbl" style="color:${st.cardText}">종합 호재지수</div></div>
+      <div class="sc-grade" style="color:${st.fill}">${st.grade}</div>
+    </div>
+    ${tagsHTML ? `<div style="margin-bottom:12px;line-height:1.8">${tagsHTML}</div>` : ""}
+    <div style="font-size:10px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:0.6px;margin-bottom:8px">기본 지표</div>
+    <div class="cats">${CATS1.map(barRow).join("")}</div>
+    <div style="font-size:10px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:0.6px;margin-bottom:8px;margin-top:4px">정성 지표</div>
+    <div class="cats">${CATS2.map(barRow).join("")}</div>
+    <div class="news-hd">주요 호재 / 악재</div>${newsHTML}
+    <button class="ai-btn">🔍 ${reg.name} AI 심층 분석 →</button>`;
+}
+
+// ── GeoJSON 레이어 빌더 ──────────────────────────────────────
+function geoStyle(reg, weight) {
+  if (!reg) return { fillColor:"#ccc", fillOpacity:0.15, color:"#bbb", weight };
+  const st = scoreStyle(getScore(reg));
+  return { fillColor:st.fill, fillOpacity:st.op, color:st.stroke, weight, opacity:0.9 };
+}
+
+function buildLayer(geojson, getRegFn, weight) {
+  return L.geoJSON(geojson, {
+    style: f => geoStyle(getRegFn(f), weight),
+    onEachFeature: (f, layer) => {
+      const reg = getRegFn(f);
+      if (!reg) return;
+      const st = () => scoreStyle(getScore(reg));
+      layer.on({
+        click:     () => showDetail(reg),
+        mouseover: e  => { showTip(reg,e); layer.setStyle({ weight:weight+2, fillOpacity:Math.min(st().op+0.18,0.94) }); layer.bringToFront(); },
+        mouseout:  () => { hideTip(); layer.setStyle({ weight, fillOpacity:st().op }); }
+      });
+    }
+  });
+}
+
+// ── 레이어 전환 ──────────────────────────────────────────────
+let sidoLayer=null, sigunguLayer=null, curLevel="sido";
+const ZOOM_TH = 9;
+
+function showSido() {
+  if (sigunguLayer) map.removeLayer(sigunguLayer);
+  if (sidoLayer)    sidoLayer.addTo(map);
+  curLevel = "sido";
+  document.getElementById("zoom-label").textContent = "시도 단위";
+  document.getElementById("zoom-hint").style.opacity = "1";
+}
+function showSigungu() {
+  if (sidoLayer)    map.removeLayer(sidoLayer);
+  if (sigunguLayer) sigunguLayer.addTo(map);
+  curLevel = "sigungu";
+  document.getElementById("zoom-label").textContent = "시군구 단위";
+  document.getElementById("zoom-hint").style.opacity = "0";
+}
+function updateLayers() {
+  const z = map.getZoom();
+  if (z >= ZOOM_TH && curLevel !== "sigungu" && sigunguLayer) showSigungu();
+  else if (z < ZOOM_TH && curLevel !== "sido" && sidoLayer)   showSido();
+}
+map.on("zoomend", updateLayers);
+
+// ── 필터 ────────────────────────────────────────────────────
+function refreshStyles() {
+  if (sidoLayer)    sidoLayer.setStyle(f => geoStyle(getSidoReg(f), 1.5));
+  if (sigunguLayer) sigunguLayer.setStyle(f => geoStyle(getSigunguReg(f), 1));
+}
+document.querySelectorAll(".chip").forEach(c => {
+  c.addEventListener("click", () => {
+    document.querySelectorAll(".chip").forEach(x=>x.classList.remove("on"));
+    c.classList.add("on"); curFilter = c.dataset.c; refreshStyles();
+  });
+});
+
+// ── 데이터 로드 ──────────────────────────────────────────────
+Promise.all([
+  fetch("skorea-provinces-geo.json").then(r=>{ if(!r.ok) throw new Error("skorea-provinces-geo.json 없음"); return r.json(); }),
+  fetch("skorea-municipalities-geo.json").then(r=>{ if(!r.ok) throw new Error("skorea-municipalities-geo.json 없음"); return r.json(); }),
+])
+.then(([sidoGeo, sigunguGeo]) => {
+  document.getElementById("loading").style.display = "none";
+  sidoLayer    = buildLayer(sidoGeo,    getSidoReg,    1.5);
+  sigunguLayer = buildLayer(sigunguGeo, getSigunguReg, 1);
+  map.getZoom() >= ZOOM_TH ? showSigungu() : showSido();
+})
+.catch(err => {
+  document.getElementById("loading").style.display = "none";
+  const b = document.getElementById("err");
+  b.style.display = "block";
+  b.innerHTML = `⚠️ GeoJSON 파일을 찾을 수 없어요.<br>
+    <code>skorea-provinces-geo.json</code> · <code>skorea-municipalities-geo.json</code><br>
+    <small>${err.message}</small>`;
+});
+</script>
+</body>
+</html>
