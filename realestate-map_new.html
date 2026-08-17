@@ -44,7 +44,7 @@ html,body { height:100%; font-family:'Noto Sans KR',sans-serif; overflow:hidden;
 
 /* 좌상단 레벨 표시 — 3단계 */
 #level-badge {
-  position:absolute; top:16px; left:16px;
+  position:absolute; top:16px; left:62px;   /* 줌 컨트롤(좌상단) 옆으로 비켜난다 */
   background:var(--bg); border-radius:20px; padding:5px 8px;
   box-shadow:var(--shadow); z-index:1000;
   display:flex; align-items:center; gap:2px;
@@ -257,8 +257,18 @@ html,body { height:100%; font-family:'Noto Sans KR',sans-serif; overflow:hidden;
 /* 안개가 걷히는 연출 */
 .leaflet-interactive { transition:fill 0.45s ease, fill-opacity 0.45s ease, stroke 0.45s ease; }
 
-/* ── 검색 ── */
-#search-box { padding:10px 18px 12px; border-bottom:1px solid var(--border); position:relative; }
+/* ── 검색 — 지도 우상단 오버레이 ── */
+#search-box.on-map {
+  position:absolute; top:16px; right:16px; width:270px; z-index:1100;
+  background:var(--bg); border-radius:22px; padding:0;
+  box-shadow:var(--shadow);
+}
+#search-box.on-map .search-row { background:transparent; border:none; padding:0 14px; }
+#search-box.on-map:focus-within { border-radius:14px; }
+#search-box.on-map #search-results:not(:empty) {
+  border-top:1px solid var(--border); padding:6px; margin-top:0;
+  max-height:52vh; overflow-y:auto;
+}
 .search-row {
   display:flex; align-items:center; gap:7px;
   background:var(--bg2); border:1px solid var(--border2);
@@ -278,7 +288,7 @@ html,body { height:100%; font-family:'Noto Sans KR',sans-serif; overflow:hidden;
   font-size:17px; line-height:1; padding:2px 0 4px; display:none; flex-shrink:0;
 }
 #search-x.on { display:block; }
-#search-results { margin-top:7px; max-height:38vh; overflow-y:auto; }
+#search-results:empty { display:none; }
 .sr {
   display:flex; justify-content:space-between; align-items:center; gap:8px;
   padding:8px 10px; border-radius:7px; cursor:pointer; font-size:12px;
@@ -351,6 +361,9 @@ html,body { height:100%; font-family:'Noto Sans KR',sans-serif; overflow:hidden;
   #sb-brand { padding:12px 18px 10px; }
   #top-bar { display:none; }
   #sb-toggle { display:none; }
+  #search-box.on-map { top:10px; left:10px; right:10px; width:auto; }
+  #level-badge { top:64px; left:10px; }
+  #zoom-hint { top:108px; }
   #zoom-hint { bottom:auto; top:60px; }
   #detail { padding-bottom:40px; }
   .beat { padding:12px 13px; }
@@ -379,13 +392,7 @@ html,body { height:100%; font-family:'Noto Sans KR',sans-serif; overflow:hidden;
       <span class="lv"    data-lv="dong">동</span>
     </div>
     <div id="zoom-hint">🔍 확대할수록 더 좁은 동네까지 볼 수 있어요</div>
-    <button id="sb-toggle" title="사이드바 접기/펼치기" aria-label="사이드바 접기">›</button>
-  </div>
-  <div id="sidebar">
-    <div id="sheet-handle"><div class="grip"></div><div id="sheet-peek"></div></div>
-    <div id="sb-brand"><h1>여기 왜 뜨는 걸까?</h1><p>동네를 눌러보면 이유를 알려드려요</p></div>
-
-    <div id="search-box">
+    <div id="search-box" class="on-map">
       <div class="search-row">
         <span class="search-ico">🔍</span>
         <input id="search" type="search" placeholder="동네 이름으로 찾기 — 예: 대치동"
@@ -394,6 +401,12 @@ html,body { height:100%; font-family:'Noto Sans KR',sans-serif; overflow:hidden;
       </div>
       <div id="search-results"></div>
     </div>
+
+    <button id="sb-toggle" title="사이드바 접기/펼치기" aria-label="사이드바 접기">›</button>
+  </div>
+  <div id="sidebar">
+    <div id="sheet-handle"><div class="grip"></div><div id="sheet-peek"></div></div>
+    <div id="sb-brand"><h1>여기 왜 뜨는 걸까?</h1><p>동네를 눌러보면 이유를 알려드려요</p></div>
 
     <div id="favs"></div>
     <div id="legend">
@@ -431,13 +444,13 @@ html,body { height:100%; font-family:'Noto Sans KR',sans-serif; overflow:hidden;
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://unpkg.com/topojson-client@3/dist/topojson-client.min.js"></script>
-<script src="data-regions.js?v=202608171533"></script>
-<script src="data-metrics.js?v=202608171533"></script>
-<script src="data-redev.js?v=202608171533"></script>
+<script src="data-regions.js?v=202608171535"></script>
+<script src="data-metrics.js?v=202608171535"></script>
+<script src="data-redev.js?v=202608171535"></script>
 <!-- 실거래가. tools/fetch-prices.py 를 돌려야 생기며, 없어도 지도는 동작합니다. -->
-<script src="data-prices.js?v=202608171533" onerror="void 0"></script>
+<script src="data-prices.js?v=202608171535" onerror="void 0"></script>
 <script>
-const APP_VERSION = "v2026.08.17.1533";
+const APP_VERSION = "v2026.08.17.1535";
 
 // ── 7단계 색상 ───────────────────────────────────────────────
 function scoreStyle(s) {

@@ -48,12 +48,16 @@ def check_html(html):
     if depth != 0:
         sys.exit(f"!! div 짝이 맞지 않습니다 (균형 {depth}). 배포를 멈춥니다.")
 
-    # 사이드바가 주요 블록을 다 품고 있는지
+    # 사이드바가 주요 블록을 다 품고 있는지 (검색은 지도 위 오버레이라 제외)
     seg = html[html.index('<div id="sidebar">'): html.index("</body>")]
-    missing = [k for k in ("search-box", "legend", "filters", "detail")
-               if f'id="{k}"' not in seg]
+    missing = [k for k in ("legend", "filters", "detail") if f'id="{k}"' not in seg]
     if missing:
         sys.exit(f"!! 사이드바 밖으로 빠진 요소: {missing}. 배포를 멈춥니다.")
+
+    # 검색은 지도 영역 안에 있어야 오버레이로 뜬다
+    mapseg = html[html.index('<div id="map-area">'): html.index('<div id="sidebar">')]
+    if 'id="search-box"' not in mapseg:
+        sys.exit("!! 검색창이 지도 영역 밖에 있습니다. 배포를 멈춥니다.")
 
     # JS가 없는 id를 찾지 않는지
     ids = set(re.findall(r'id="([^"]+)"', html))
