@@ -1,144 +1,88 @@
 #!/usr/bin/env python3
 """국토교통부 아파트 매매 실거래가를 받아 data-prices.js를 만든다.
 
-⚠️ 이 스크립트는 실행 검증이 되지 않았습니다. data.go.kr 인증키가 있어야
-   호출이 가능한데 작성 시점에 키가 없었습니다. 처음 돌릴 때는 --dry-run으로
-   요청 형태를 먼저 확인하세요.
+  국토교통부 실거래가 정보 오픈API — 아파트 매매 실거래가 자료
+  https://apis.data.go.kr/1613000/RTMSDataSvcAptTrade
+  응답은 XML. 명세는 data/아파트 매매 실거래가 자료 기술문서.pdf
 
-준비:
-  1. https://www.data.go.kr 가입
-  2. "국토교통부_아파트 매매 실거래가 상세 자료" 활용신청 (자동 승인)
-  3. "행정안전부_행정표준코드 행정구역코드" 활용신청 — 법정동코드 매핑용
-  4. 마이페이지에서 일반 인증키(Decoding) 복사
+인증키는 data/api_key.md 에서 읽는다(git에 올라가지 않음). 환경변수
+MOLIT_API_KEY 로 덮어쓸 수 있다.
 
-사용:
-  export MOLIT_API_KEY='발급받은키'
-  python3 tools/fetch-prices.py --dry-run       # 호출 형태만 출력
-  python3 tools/fetch-prices.py --months 6      # 최근 6개월
-  python3 tools/fetch-prices.py --months 6 --sido 11 31   # 서울·경기만
+  python3 tools/fetch-prices.py --verify              # 코드표 검증만
+  python3 tools/fetch-prices.py --months 3 --sido 11 31
+  python3 tools/fetch-prices.py --months 6            # 전국
 
-왜 매핑이 필요한가:
-  이 지도의 경계는 통계청 '행정동' 코드(7자리)를 쓰는데, 실거래가 API는
-  행정안전부 '법정동' 코드(LAWD_CD 5자리)를 씁니다. 둘은 체계가 다릅니다.
-    통계청 11230 강남구  ↔  법정동 11680 강남구
-  게다가 행정동과 법정동은 1:1이 아닙니다. '대치1동'(행정동)은 '대치동'
-  (법정동)의 일부고, 반대로 한 행정동이 여러 법정동을 걸치기도 합니다.
-  그래서 이 스크립트는 두 체계를 이름으로 맞춰(geo-sigungu.json 의 시군구명 ↔
-  행정표준코드의 주소명) 결과를 **통계청 코드 기준**으로 내보냅니다. 동 단위는
-  법정동명을 그대로 붙여두고, 앱에서 이름을 느슨하게 이어 씁니다. 이어지지
-  않으면 시군구 중앙값으로 떨어집니다.
+⚠️ 해제된 거래(cdealType='O')는 뺀다. 계약이 취소된 건이라 시세가 아니다.
+   가격은 평균이 아니라 **중앙값**을 쓴다. 초고가 펜트하우스 한 건이
+   동네 대표값을 흔드는 것을 막기 위해서다.
+
+⚠️ 이 API는 법정동 코드(LAWD_CD)를 쓰고 이 지도는 통계청 코드를 쓴다.
+   둘은 번호 체계가 완전히 다르다 (종로구: 법정동 11110 ↔ 통계청 11010).
+   tools/lawd.py 의 표로 이름을 맞춰 잇는다.
 """
 
 import argparse
 import json
 import os
+import re
 import statistics
 import sys
 import time
 import urllib.parse
 import urllib.request
+import xml.etree.ElementTree as ET
 from collections import defaultdict
 from datetime import date
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from lawd import LAWD, SIDO
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-CACHE = os.path.join(ROOT, "tools", "cache")
-
-STANREGIN = "https://apis.data.go.kr/1741000/StanReginCd/getStanReginCdList"
-APT_TRADE = ("https://apis.data.go.kr/1613000/RTMSDataSvcAptTradeDev/"
-             "getRTMSDataSvcAptTradeDev")
-
-# 통계청 시도코드 → 법정동 시도코드
-SIDO_MAP = {
-    "11": "11", "21": "26", "22": "27", "23": "28", "24": "29",
-    "25": "30", "26": "31", "29": "36", "31": "41", "32": "51",
-    "33": "43", "34": "44", "35": "52", "36": "46", "37": "47",
-    "38": "48", "39": "50",
-}
+URL = "https://apis.data.go.kr/1613000/RTMSDataSvcAptTrade/getRTMSDataSvcAptTrade"
+PY_PER_M2 = 3.3058          # 1평 = 3.3058㎡
 
 
-def get(url, params, retries=3):
-    q = urllib.parse.urlencode(params, safe="")
+def read_key():
+    if os.environ.get("MOLIT_API_KEY"):
+        return os.environ["MOLIT_API_KEY"].strip()
+    for p in [os.path.join(ROOT, "data", "api_key.md"),
+              os.path.expanduser("~/.hojae_api_key.md")]:
+        if not os.path.exists(p):
+            continue
+        txt = open(p, encoding="utf-8").read()
+        m = re.search(r"일반 인증키\s*\n\s*(\S+)", txt)
+        if m:
+            return m.group(1).strip()
+    sys.exit("인증키를 찾지 못했습니다. data/api_key.md 를 두거나 MOLIT_API_KEY 를 설정하세요.")
+
+
+def fetch(key, lawd, ym, rows=1000, retries=3):
+    """한 시군구·한 달 거래 목록. 키는 이미 URL 인코딩되어 있어 그대로 붙인다."""
+    url = (f"{URL}?serviceKey={key}&LAWD_CD={lawd}&DEAL_YMD={ym}"
+           f"&pageNo=1&numOfRows={rows}")
     for attempt in range(retries):
         try:
-            with urllib.request.urlopen(f"{url}?{q}", timeout=40) as r:
-                return r.read().decode("utf-8")
-        except Exception as e:
+            with urllib.request.urlopen(url, timeout=40) as r:
+                xml = r.read().decode("utf-8")
+            break
+        except Exception:
             if attempt == retries - 1:
-                raise
-            time.sleep(2 * (attempt + 1))
-
-
-def load_lawd(key, refresh=False):
-    """법정동 시군구 코드 목록 [(LAWD_CD, 시도명, 시군구명)] 을 만든다."""
-    path = os.path.join(CACHE, "lawd.json")
-    if os.path.exists(path) and not refresh:
-        return json.load(open(path, encoding="utf-8"))
-
-    os.makedirs(CACHE, exist_ok=True)
-    rows, page = [], 1
-    while True:
-        raw = get(STANREGIN, {
-            "ServiceKey": key, "type": "json",
-            "pageNo": page, "numOfRows": 1000,
-        })
-        data = json.loads(raw)
-        body = data.get("StanReginCd")
-        if not body or len(body) < 2:
-            break
-        items = body[1].get("row", [])
-        if not items:
-            break
-        for it in items:
-            code = str(it.get("region_cd", ""))
-            # 시군구 단위만: 앞 5자리가 유효하고 뒤 5자리가 00000
-            if len(code) == 10 and code[5:] == "00000" and code[2:5] != "000":
-                rows.append([code[:5], it.get("locatadd_nm", "")])
-        page += 1
-        if page > 60:
-            break
-
-    json.dump(rows, open(path, "w", encoding="utf-8"), ensure_ascii=False)
-    return rows
-
-
-def map_to_kostat(lawd):
-    """법정동 시군구코드 → 통계청 시군구코드. 주소명을 공백 제거 후 부분일치."""
-    topo = json.load(open(os.path.join(ROOT, "geo-sigungu.json"), encoding="utf-8"))
-    key = list(topo["objects"].keys())[0]
-    ks = [(str(g["properties"]["code"]), g["properties"]["name"])
-          for g in topo["objects"][key]["geometries"]]
-
-    out, used = {}, set()
-    for lcode, addr in lawd:
-        flat = addr.replace(" ", "")
-        best = None
-        for kcode, kname in ks:
-            if kcode in used:
-                continue
-            if kname and kname in flat:
-                if best is None or len(kname) > len(best[1]):
-                    best = (kcode, kname)
-        if best:
-            out[lcode] = best[0]
-            used.add(best[0])
-    return out
-
-
-def fetch_month(key, lawd, ym):
-    """한 시군구·한 달 거래 목록."""
-    raw = get(APT_TRADE, {
-        "serviceKey": key, "LAWD_CD": lawd, "DEAL_YMD": ym,
-        "numOfRows": 2000, "pageNo": 1, "_type": "json",
-    })
+                return [], None
+            time.sleep(1.5 * (attempt + 1))
     try:
-        data = json.loads(raw)
-    except json.JSONDecodeError:
-        return []                                   # 오류 시 XML이 온다
-    body = (data.get("response") or {}).get("body") or {}
-    items = (body.get("items") or {}).get("item") or []
-    if isinstance(items, dict):
-        items = [items]
-    return items
+        root = ET.fromstring(xml)
+    except ET.ParseError:
+        return [], None
+    code = (root.findtext(".//resultCode") or "").strip()
+    if code not in ("000", "00"):
+        msg = (root.findtext(".//resultMsg") or "").strip()
+        return [], f"{code} {msg}"
+    return root.findall(".//item"), None
+
+
+def text(item, tag):
+    v = item.findtext(tag)
+    return (v or "").strip()
 
 
 def months_back(n):
@@ -152,94 +96,165 @@ def months_back(n):
     return out
 
 
+def build_code_map():
+    """법정동 시군구 코드 → 통계청 시군구 코드."""
+    topo = json.load(open(os.path.join(ROOT, "geo-sigungu.json"), encoding="utf-8"))
+    key = list(topo["objects"].keys())[0]
+    geo = [(str(g["properties"]["code"]), g["properties"]["name"])
+           for g in topo["objects"][key]["geometries"]]
+
+    out, missed = {}, []
+    for lcode, lname in LAWD.items():
+        ks = SIDO.get(lcode[:2])
+        if not ks:
+            missed.append((lcode, lname, "시도 미매핑"))
+            continue
+        pool = [(c, n) for c, n in geo if c.startswith(ks)]
+        hit = [c for c, n in pool if n == lname]
+        if not hit:      # 세종특별자치시 ↔ 세종시, 미추홀구 ↔ 남구 등
+            alias = {"세종특별자치시": "세종시", "미추홀구": "남구"}.get(lname)
+            if alias:
+                hit = [c for c, n in pool if n == alias]
+        if not hit:      # 폐지된 구(부천시원미구) → 상위 시
+            base = re.sub(r"시[가-힣]+구$", "시", lname)
+            hit = [c for c, n in pool if n == base]
+        if hit:
+            out[lcode] = hit[0]
+        else:
+            missed.append((lcode, lname, "시군구 미매칭"))
+    return out, missed, dict(geo)
+
+
+def verify(key, cmap, geo, sample_ym):
+    """응답의 sggCd로 코드표를 검증한다.
+
+    주의: estateAgentSggNm(중개사 소재지)으로는 검증할 수 없다. 중개사 위치는
+    매물 위치와 다를 수 있어서(부산 중구 매물을 동구 중개사가 거래) 멀쩡한
+    코드가 틀린 것처럼 보인다. 실제로 그렇게 오판했었다.
+    """
+    print(f"코드표 검증 ({sample_ym}) — 거래가 있는 시군구만 확인 가능\n")
+    ok = bad = nodata = 0
+    for lcode in sorted(LAWD):
+        if lcode not in cmap:
+            continue
+        items, err = fetch(key, lcode, sample_ym, rows=1)
+        if err:
+            print(f"  !! {lcode} {LAWD[lcode]}: {err}")
+            bad += 1
+            continue
+        if not items:
+            nodata += 1
+            continue
+        got = text(items[0], "sggCd")
+        if not got:
+            nodata += 1
+            continue
+        if got == lcode:
+            ok += 1
+        else:
+            print(f"  !! {lcode} {LAWD[lcode]} → API가 돌려준 sggCd={got}")
+            bad += 1
+        time.sleep(0.05)
+    print(f"\n  일치 {ok} · 불일치 {bad} · 거래없어 확인불가 {nodata}")
+    return bad == 0
+
+
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--key", default=os.environ.get("MOLIT_API_KEY"))
-    ap.add_argument("--months", type=int, default=6)
+    ap.add_argument("--months", type=int, default=3)
     ap.add_argument("--sido", nargs="*", help="통계청 시도코드 (예: 11 31)")
-    ap.add_argument("--dry-run", action="store_true")
-    ap.add_argument("--refresh-lawd", action="store_true")
+    ap.add_argument("--verify", action="store_true")
     args = ap.parse_args()
+
+    key = read_key()
+    cmap, missed, geo = build_code_map()
+    print(f"코드 매핑 {len(cmap)}/{len(LAWD)}곳")
+    for lc, ln, why in missed:
+        print(f"  - {lc} {ln}: {why}")
 
     yms = months_back(args.months)
 
-    if args.dry_run:
-        print("호출 형태 (키는 가림):\n")
-        print(f"  법정동코드:  {STANREGIN}?ServiceKey=***&type=json&pageNo=1&numOfRows=1000")
-        print(f"  실거래가:    {APT_TRADE}?serviceKey=***&LAWD_CD=11680&DEAL_YMD={yms[0]}"
-              f"&numOfRows=2000&pageNo=1&_type=json")
-        print(f"\n대상 기간: {', '.join(yms)}")
-        print("\n실행하려면 --dry-run 을 빼고 MOLIT_API_KEY 를 설정하세요.")
-        return
+    if args.verify:
+        sys.exit(0 if verify(key, cmap, geo, yms[0]) else 1)
 
-    if not args.key:
-        sys.exit("인증키가 없습니다. MOLIT_API_KEY 를 설정하거나 --key 로 넘기세요.")
-
-    print("법정동 시군구 코드 목록 만드는 중...")
-    lawd = load_lawd(args.key, args.refresh_lawd)
+    targets = sorted(cmap)
     if args.sido:
-        want = {SIDO_MAP[s] for s in args.sido if s in SIDO_MAP}
-        lawd = [r for r in lawd if r[0][:2] in want]
-    kostat = map_to_kostat(lawd)
-    print(f"  시군구 {len(lawd)}개 · 통계청 코드로 매칭된 곳 {len(kostat)}개")
-    unmatched = [n for c, n in lawd if c not in kostat]
-    if unmatched:
-        print(f"  ⚠️ 매칭 실패 {len(unmatched)}곳 — 결과에서 빠집니다: {', '.join(unmatched[:5])}...")
-    print(f"  {len(yms)}개월 = 호출 {len(lawd) * len(yms)}회")
+        want = set(args.sido)
+        targets = [l for l in targets if cmap[l][:2] in want]
+    print(f"대상 {len(targets)}곳 × {len(yms)}개월 = {len(targets)*len(yms)}회 호출\n")
 
-    # (LAWD_CD, 법정동명) → 단위면적당 가격 리스트
-    per_dong = defaultdict(list)
+    per_dong = defaultdict(list)      # (통계청시군구, 법정동명) → 평당가 목록
     per_sgg = defaultdict(list)
+    n_deal = n_drop = 0
+    errors = []
 
-    for i, (code, name) in enumerate(lawd, 1):
+    for i, lcode in enumerate(targets, 1):
+        kcode = cmap[lcode]
         for ym in yms:
-            for it in fetch_month(args.key, code, ym):
+            items, err = fetch(key, lcode, ym)
+            if err:
+                errors.append(f"{LAWD[lcode]} {ym}: {err}")
+                continue
+            for it in items:
+                # 해제된 거래는 시세가 아니다
+                if text(it, "cdealType") == "O":
+                    n_drop += 1
+                    continue
                 try:
-                    amount = int(str(it.get("dealAmount", "")).replace(",", "").strip())
-                    area = float(it.get("excluUseAr"))
-                    dong = str(it.get("umdNm", "")).strip()
-                except (TypeError, ValueError):
+                    amount = int(text(it, "dealAmount").replace(",", ""))
+                    area = float(text(it, "excluUseAr"))
+                except ValueError:
                     continue
-                if area <= 0 or amount <= 0:
+                if amount <= 0 or area <= 0:
                     continue
-                per_m2 = amount * 10000 / area          # 만원 단위 → 원/㎡
-                kc = kostat.get(code)
-                if not kc:
-                    continue
-                per_dong[(kc, dong)].append(per_m2)
-                per_sgg[kc].append(per_m2)
-            time.sleep(0.12)                            # 호출 간격
-        if i % 20 == 0:
-            print(f"  {i}/{len(lawd)} {name}")
+                per_py = amount * 10000 / area * PY_PER_M2
+                dong = text(it, "umdNm")
+                per_sgg[kcode].append(per_py)
+                if dong:
+                    per_dong[(kcode, dong)].append(per_py)
+                n_deal += 1
+            time.sleep(0.06)
+        if i % 25 == 0 or i == len(targets):
+            print(f"  {i}/{len(targets)} · 거래 {n_deal:,}건")
 
-    rows = {}
-    for (code, dong), v in per_dong.items():
-        if len(v) < 3:                                  # 표본 3건 미만은 버림
-            continue
-        rows[f"{code}|{dong}"] = {
-            "won_per_m2": int(statistics.median(v)),
-            "won_per_py": int(statistics.median(v) * 3.3058),
-            "n": len(v),
-        }
-    sgg = {c: {"won_per_m2": int(statistics.median(v)),
-               "won_per_py": int(statistics.median(v) * 3.3058),
-               "n": len(v)}
-           for c, v in per_sgg.items() if len(v) >= 5}
+    def summarize(vals, least):
+        if len(vals) < least:
+            return None
+        return {"py": int(statistics.median(vals)), "n": len(vals)}
+
+    prices = {}
+    for (kcode, dong), v in per_dong.items():
+        s = summarize(v, 3)
+        if s:
+            prices[f"{kcode}|{dong}"] = s
+    sgg = {c: s for c, v in per_sgg.items() if (s := summarize(v, 5))}
+
+    # 전국 순위 — 카드에서 "전국 상위 N%" 로 쓴다
+    ranked = sorted(sgg.items(), key=lambda kv: -kv[1]["py"])
+    for rank, (c, s) in enumerate(ranked, 1):
+        s["rank"] = rank
+    total = len(ranked)
 
     out = os.path.join(ROOT, "data-prices.js")
     with open(out, "w", encoding="utf-8") as f:
         f.write("// 자동 생성 — 직접 고치지 마세요.\n")
         f.write("// 생성: python3 tools/fetch-prices.py\n")
-        f.write("// 출처: 국토교통부 아파트 매매 실거래가 (data.go.kr)\n")
-        f.write(f"// 기간: {yms[-1]} ~ {yms[0]} · 값은 전용면적 기준 중앙값\n")
-        f.write("// 키 형식: PRICES 는 \"통계청시군구코드|법정동명\", PRICES_SGG 는 \"통계청시군구코드\"\n")
+        f.write("// 출처: 국토교통부 아파트 매매 실거래가 오픈API (data.go.kr)\n")
+        f.write(f"// 기간: {yms[-1]} ~ {yms[0]} · 해제 거래 제외 · 값은 평당가 중앙값(원)\n")
+        f.write("//\n")
+        f.write("// PRICES     \"통계청시군구코드|법정동명\" → {py:평당가, n:거래건수}\n")
+        f.write("// PRICES_SGG \"통계청시군구코드\" → {py, n, rank}\n")
+        f.write(f"const PRICE_META = {json.dumps({'from':yms[-1],'to':yms[0],'total_sgg':total,'deals':n_deal}, ensure_ascii=False)};\n")
         f.write("const PRICES = ")
-        json.dump(rows, f, ensure_ascii=False, separators=(",", ":"))
+        json.dump(prices, f, ensure_ascii=False, separators=(",", ":"))
         f.write(";\nconst PRICES_SGG = ")
         json.dump(sgg, f, ensure_ascii=False, separators=(",", ":"))
         f.write(";\n")
 
-    print(f"\n{out} 생성 — 법정동 {len(rows)}개 · 시군구 {len(sgg)}개")
+    print(f"\n{out}")
+    print(f"  거래 {n_deal:,}건 (해제 제외 {n_drop}건) · 시군구 {len(sgg)}곳 · 법정동 {len(prices)}곳")
+    if errors:
+        print(f"  오류 {len(errors)}건: {errors[:3]}")
 
 
 if __name__ == "__main__":

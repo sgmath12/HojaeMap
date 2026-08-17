@@ -1,1 +1,5 @@
 tools/cache/
+tools/__pycache__/
+__pycache__/
+data/api_key.md
+.env
