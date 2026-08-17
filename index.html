@@ -3,7 +3,6 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta http-equiv="Cache-Control" content="no-cache, must-revalidate">
 <title>호재맵 — 부동산 호재 지도</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -432,13 +431,13 @@ html,body { height:100%; font-family:'Noto Sans KR',sans-serif; overflow:hidden;
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://unpkg.com/topojson-client@3/dist/topojson-client.min.js"></script>
-<script src="data-regions.js?v=20260817e"></script>
-<script src="data-metrics.js?v=20260817e"></script>
-<script src="data-redev.js?v=20260817e"></script>
+<script src="data-regions.js?v=202608171533"></script>
+<script src="data-metrics.js?v=202608171533"></script>
+<script src="data-redev.js?v=202608171533"></script>
 <!-- 실거래가. tools/fetch-prices.py 를 돌려야 생기며, 없어도 지도는 동작합니다. -->
-<script src="data-prices.js?v=20260817e" onerror="void 0"></script>
+<script src="data-prices.js?v=202608171533" onerror="void 0"></script>
 <script>
-const APP_VERSION = "v2026.08.17e";
+const APP_VERSION = "v2026.08.17.1533";
 
 // ── 7단계 색상 ───────────────────────────────────────────────
 function scoreStyle(s) {
@@ -1285,6 +1284,28 @@ handle.addEventListener("touchend", () => {
 window.addEventListener("resize", () => map.invalidateSize({ pan:false }));
 
 renderExplore();
+
+// ── 새 버전 자동 감지 ────────────────────────────────────────
+// GitHub Pages는 index.html을 max-age=600으로 내려보내고 모바일은 더 오래
+// 붙들기도 한다. 헤더를 우리가 못 바꾸니 페이지가 스스로 확인한다.
+// version.json(100바이트 남짓)을 no-store로 받아 자기 버전과 비교하고,
+// 다르면 ?v=<새버전> 으로 주소를 바꿔 다시 연다. 새 URL이라 캐시를 비껴간다.
+(function checkVersion() {
+  const KEY = "hojae.reloaded";
+  fetch("version.json", { cache:"no-store" })
+    .then(r => r.ok ? r.json() : null)
+    .then(v => {
+      if (!v || !v.version || v.version === APP_VERSION) {
+        sessionStorage.removeItem(KEY);
+        return;
+      }
+      // 한 세션에 한 번만 — 배포가 꼬여도 무한 새로고침에 빠지지 않게
+      if (sessionStorage.getItem(KEY) === v.version) return;
+      sessionStorage.setItem(KEY, v.version);
+      location.replace(location.pathname + "?v=" + encodeURIComponent(v.version));
+    })
+    .catch(() => {});
+})();
 
 // ── 데이터 로드 ──────────────────────────────────────────────
 function load(url) {

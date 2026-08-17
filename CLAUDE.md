@@ -112,6 +112,20 @@ transport는 검증을 통과해 점수를 대체했고, school_access·life_den
 
 관심 지역(⭐)과 방문 기록(`localStorage`)은 남아 있습니다.
 
+## 배포와 캐시
+
+**배포 전에 반드시 `python3 tools/release.py`를 돌리세요.** 버전을 올리고
+`index.html`·`version.json`을 맞추며, 구조 검사에 걸리면 배포를 막습니다.
+
+구조 검사를 넣은 이유: `</div>` 하나가 남아 `#sidebar`가 조기 종료되면서
+범례·필터·카드가 `#app`(flex-row)의 형제가 되어 **사이드바 전체가 가로로
+펼쳐진 적**이 있습니다. JS 문법 검사로는 안 잡히고, CSS는 멀쩡해서 원인을
+찾는 데 오래 걸렸습니다. HTML 구조도 반드시 확인하세요.
+
+캐시는 `version.json` 대조로 풉니다 (README 참고). GitHub Pages 헤더는
+바꿀 수 없으니 `<meta http-equiv="Cache-Control">` 같은 걸 다시 넣지 마세요 —
+문서 자체엔 듣지 않습니다.
+
 ## 모바일
 
 - ≤720px에서 사이드바가 바텀시트가 됩니다.

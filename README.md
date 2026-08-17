@@ -160,6 +160,39 @@ python3 -m http.server 8123
                           93점  + 시세 98 × 28% → 94
 ```
 
+## 배포
+
+GitHub Pages로 서비스합니다 — https://sgmath12.github.io/HojaeMap/
+
+```bash
+python3 tools/release.py     # 버전 올리기 + 구조·문법 검사
+git add -A && git commit -m "..." && git push
+```
+
+`tools/release.py`가 하는 일:
+- `realestate-map_new.html` → `index.html` 복사, 버전 도장
+- `version.json` 갱신, 데이터 파일에 `?v=` 부여
+- **구조 검사** — `<div>` 짝, 사이드바가 주요 블록을 품는지, JS가 없는 id를
+  참조하는지. 하나라도 걸리면 배포를 멈춥니다.
+
+### 캐시 문제를 어떻게 푸는가
+
+GitHub Pages는 `index.html`을 `cache-control: max-age=600`으로 내려보내고,
+응답 헤더를 우리가 바꿀 수 없습니다. 모바일 브라우저는 그보다 오래 붙들기도
+합니다. `<meta http-equiv="Cache-Control">`은 문서 자체엔 잘 듣지 않습니다.
+
+그래서 **페이지가 스스로 확인합니다.**
+
+1. 빌드할 때 버전을 `index.html` 안(`APP_VERSION`)과 `version.json`에 함께 씁니다
+2. 페이지는 뜨자마자 `version.json`을 `cache:"no-store"`로 받습니다
+3. 자기 버전과 다르면 `?v=<새버전>`으로 주소를 바꿔 다시 엽니다 —
+   **새 URL이라 캐시를 비껴갑니다**
+
+한 세션에 한 번만 시도하므로 배포가 꼬여도 무한 새로고침에 빠지지 않습니다.
+`version.json`은 100바이트 남짓이라 매번 받아도 부담이 없습니다.
+
+사이드바 맨 아래에 현재 버전이 표시되니 눈으로도 확인할 수 있습니다.
+
 ## 모바일
 
 720px 이하에서는 사이드바가 **바텀시트**로 바뀝니다. 손잡이를 끌거나 눌러
