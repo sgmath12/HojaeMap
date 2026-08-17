@@ -56,12 +56,6 @@ html,body { height:100%; font-family:'Noto Sans KR',sans-serif; overflow:hidden;
 .lv.on { background:#dce8f8; color:#1565c0; }
 .lv-sep { font-size:9px; color:var(--border2); }
 
-#zoom-hint {
-  position:absolute; bottom:28px; left:50%; transform:translateX(-50%);
-  background:rgba(15,16,20,0.70); color:white; border-radius:20px;
-  padding:6px 14px; font-size:11px; z-index:1000; pointer-events:none;
-  white-space:nowrap; transition:opacity 0.5s;
-}
 #loading {
   position:absolute; inset:0; background:#f5f6f9;
   display:flex; flex-direction:column; align-items:center; justify-content:center;
@@ -365,12 +359,7 @@ html,body { height:100%; font-family:'Noto Sans KR',sans-serif; overflow:hidden;
   #search-box.on-map { top:10px; left:10px; right:10px; width:auto; }
   .leaflet-top .leaflet-control { margin-top:62px; }
   #level-badge { top:66px; left:58px; }
-  /* 안내 문구는 시트 바로 위로 — 상단이 이미 빽빽하다 */
-  #zoom-hint { top:auto; bottom:46vh; font-size:10px; padding:5px 12px; }
-  body.sheet-open #zoom-hint { opacity:0; }
-  body.sheet-closed #zoom-hint { bottom:100px; }
-  #zoom-hint { bottom:auto; top:60px; }
-  #detail { padding-bottom:40px; }
+    body.sheet-open   body.sheet-closed     #detail { padding-bottom:40px; }
   .beat { padding:12px 13px; }
   .beat-head { font-size:14px; }
 }
@@ -396,7 +385,6 @@ html,body { height:100%; font-family:'Noto Sans KR',sans-serif; overflow:hidden;
       <span class="lv"    data-lv="sgg">시군구</span><span class="lv-sep">›</span>
       <span class="lv"    data-lv="dong">동</span>
     </div>
-    <div id="zoom-hint">🔍 확대할수록 더 좁은 동네까지 볼 수 있어요</div>
     <div id="search-box" class="on-map">
       <div class="search-row">
         <span class="search-ico">🔍</span>
@@ -449,13 +437,13 @@ html,body { height:100%; font-family:'Noto Sans KR',sans-serif; overflow:hidden;
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://unpkg.com/topojson-client@3/dist/topojson-client.min.js"></script>
-<script src="data-regions.js?v=202608171538"></script>
-<script src="data-metrics.js?v=202608171538"></script>
-<script src="data-redev.js?v=202608171538"></script>
+<script src="data-regions.js?v=202608171541"></script>
+<script src="data-metrics.js?v=202608171541"></script>
+<script src="data-redev.js?v=202608171541"></script>
 <!-- 실거래가. tools/fetch-prices.py 를 돌려야 생기며, 없어도 지도는 동작합니다. -->
-<script src="data-prices.js?v=202608171538" onerror="void 0"></script>
+<script src="data-prices.js?v=202608171541" onerror="void 0"></script>
 <script>
-const APP_VERSION = "v2026.08.17.1538";
+const APP_VERSION = "v2026.08.17.1541";
 
 // ── 7단계 색상 ───────────────────────────────────────────────
 function scoreStyle(s) {
@@ -1111,7 +1099,6 @@ function setLevel(lv) {
   if (layers[lv]) layers[lv].addTo(map);
   curLevel = lv;
   document.querySelectorAll(".lv").forEach(el => el.classList.toggle("on", el.dataset.lv === lv));
-  document.getElementById("zoom-hint").style.opacity = lv === "dong" ? "0" : "1";
 }
 
 // 동 경계는 4MB라 처음 필요해질 때 한 번만 받습니다.
