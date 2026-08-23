@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>러닝 아트 — 정자역</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+  :root{
+    --bg:#f7f8fa; --panel:#fff; --line:#e6e9ef; --ink:#1c2430; --dim:#6b7684;
+    --accent:#00a3a3;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;color:var(--ink);background:var(--bg)}
+  #app{display:flex;height:100%}
+
+  #panel{width:370px;flex:0 0 370px;background:var(--panel);border-right:1px solid var(--line);
+         overflow-y:auto;padding:20px 18px 40px}
+  h1{font-size:21px;margin:0 0 2px;letter-spacing:-.4px}
+  .sub{font-size:13px;color:var(--dim);margin:0 0 14px;line-height:1.55}
+  .note{font-size:12px;color:var(--dim);line-height:1.6;background:#f2f5f7;border-radius:10px;
+        padding:10px 12px;margin:0 0 14px}
+  .note b{color:var(--ink)}
+
+  .row{display:flex;align-items:center;gap:8px;margin:0 0 10px}
+  .row label{font-size:12.5px;color:var(--dim);cursor:pointer;user-select:none}
+  .row input{accent-color:var(--accent)}
+  .row select{font-family:inherit;font-size:12.5px;padding:4px 8px;border:1px solid var(--line);
+              border-radius:8px;background:#fff;color:var(--ink)}
+  .t-run{background:#eaf1ff;color:#2b53a8}
+  .t-scenic{background:#e6f7ea;color:#1d7a3a}
+  .why{margin:10px 0 0}
+  .why div{display:flex;justify-content:space-between;font-size:12.5px;color:#41495a;
+           padding:5px 0;border-bottom:1px solid #f0f2f5}
+  .why div:last-child{border:0}
+  .why i{font-style:normal;color:var(--dim)}
+
+  .card{display:flex;gap:12px;align-items:center;padding:11px 12px;border:1px solid var(--line);
+        border-radius:12px;margin-bottom:8px;cursor:pointer;background:#fff;transition:.12s}
+  .card:hover{border-color:#bfc7d2;transform:translateY(-1px)}
+  .card.on{border-color:var(--accent);background:#f0fbfb;box-shadow:0 0 0 1px var(--accent) inset}
+  .card svg{flex:0 0 42px}
+  .card .nm{font-size:15px;font-weight:600;letter-spacing:-.3px}
+  .card .meta{font-size:12px;color:var(--dim);margin-top:3px}
+  .tag{font-size:11px;padding:2px 7px;border-radius:99px;font-weight:600;margin-left:6px}
+  .t-good{background:#e2f7f5;color:#087f78}
+  .t-mid{background:#fff2dd;color:#a35c00}
+  .t-low{background:#f0f1f4;color:#77808d}
+
+  #detail{margin-top:18px;padding-top:16px;border-top:1px solid var(--line);display:none}
+  #detail h2{font-size:17px;margin:0 0 8px}
+  #detail p{font-size:13.5px;line-height:1.65;color:#414a57;margin:0 0 10px}
+  .stats{display:flex;gap:8px;margin:12px 0}
+  .stat{flex:1;background:#f5f7f9;border-radius:10px;padding:9px 10px;text-align:center}
+  .stat b{display:block;font-size:17px;letter-spacing:-.5px}
+  .stat span{font-size:11px;color:var(--dim)}
+  button{width:100%;padding:11px;border:0;border-radius:11px;background:var(--accent);color:#fff;
+         font-size:14px;font-weight:600;cursor:pointer;font-family:inherit}
+  button:active{opacity:.85}
+  .alts{display:flex;flex-wrap:wrap;gap:6px;margin:2px 0 12px}
+  .alts b{width:100%;font-size:12px;color:var(--dim);font-weight:500;margin-bottom:2px}
+  .alts button{width:auto;padding:5px 10px;font-size:12px;background:#eef1f4;color:#41495a;font-weight:500}
+  .alts button.on{background:var(--accent);color:#fff}
+  details{margin-top:12px;font-size:12.5px;color:var(--dim)}
+  details summary{cursor:pointer;padding:4px 0}
+  details p{font-size:12.5px;color:var(--dim);margin:6px 0}
+
+  #map{flex:1;position:relative}
+  .leaflet-container{background:#eef1f4}
+
+  /* 줌 단계 안내 — 지금 무엇이 보이는 상태인지 알려줍니다 */
+  #tier{position:absolute;left:12px;top:12px;z-index:800;background:rgba(255,255,255,.94);
+        border:1px solid var(--line);border-radius:10px;padding:7px 11px;font-size:12px;
+        color:#41495a;box-shadow:0 2px 8px rgba(0,0,0,.07);pointer-events:none;line-height:1.5}
+  #tier b{color:var(--ink)}
+  .kmk{background:#1c2430;color:#fff;border-radius:99px;font-size:10px;font-weight:700;
+       width:22px;height:22px;line-height:22px;text-align:center;box-shadow:0 1px 4px rgba(0,0,0,.3)}
+  .shp-label{font-size:12px;font-weight:700;color:#41495a;text-shadow:0 0 3px #fff,0 0 3px #fff,0 0 3px #fff;
+             white-space:nowrap}
+
+  @media (max-width:720px){
+    #app{display:block}
+    #map{position:fixed;inset:0}
+    #panel{position:fixed;left:0;right:0;bottom:0;width:auto;height:52vh;z-index:900;
+           border-right:0;border-top:1px solid var(--line);border-radius:18px 18px 0 0;
+           box-shadow:0 -6px 24px rgba(0,0,0,.12);padding-top:14px}
+    #grip{display:block;width:38px;height:4px;background:#ccd2da;border-radius:9px;margin:0 auto 12px}
+    #tier{top:auto;bottom:calc(52vh + 12px)}
+  }
+  #grip{display:none}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="panel">
+    <div id="grip"></div>
+    <h1>러닝 아트 🏃</h1>
+    <p class="sub" id="region">정자역 일대 도로로 그릴 수 있는 그림을 찾아봤어요.</p>
+    <p class="note">직접 그리는 게 아니라 <b>이미 있는 길 중에서 그림이 되는 자리를 찾아낸</b> 거예요.
+      지도를 <b>확대하면 실제 달릴 길</b>이 도로 위에 겹쳐 나옵니다.
+      탄천이나 중앙공원처럼 <b>사람들이 실제로 뛰는 길</b>을 낀 코스는
+      초록 딱지가 붙어요.</p>
+    <div class="row">
+      <input type="checkbox" id="scenic"><label for="scenic">탄천·공원길 위주만 보기</label>
+    </div>
+    <div class="row">
+      <input type="checkbox" id="spread"><label for="spread">겹치지 않게 한 벌만 보기</label>
+    </div>
+    <div class="row">
+      <label for="sort">정렬</label>
+      <select id="sort">
+        <option value="score">종합순</option>
+        <option value="fidelity">그림이 잘 나오는 순</option>
+        <option value="run">달리기 편한 순</option>
+      </select>
+    </div>
+    <div id="list"></div>
+    <div id="detail"></div>
+  </div>
+  <div id="map"><div id="tier"></div></div>
+</div>
+<script>
+const RUN_PACE = 6.2;      // 분/km, 예상 시간 계산용
+const TH_PATH = 14;        // 이 줌부터 실제 도로 경로를 그린다
+const TH_KM   = 16;        // 이 줌부터 1km 표시를 붙인다
+
+/* 모양마다 색을 달리해야 겹쳐 있어도 구분이 됩니다. */
+const COLORS = {
+  leaf:'#2eaa5a', cat:'#8b5cf6', dolphin:'#0ea5e9', drop:'#ec4899', heart:'#ef4444',
+  turtle:'#16a34a', moon:'#f59e0b', house:'#64748b', whale:'#3b82f6',
+  fish:'#06b6d4', star:'#f97316'
+};
+
+let DATA = null, cur = null, byShape = {};
+const gOutline = L.layerGroup(), gPath = L.layerGroup(), gKm = L.layerGroup();
+let outlines = [];
+
+const map = L.map('map', {zoomControl:true}).setView([37.3665,127.1082], 12);
+L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+  maxZoom:19, attribution:'© OpenStreetMap, © CARTO'
+}).addTo(map);
+gOutline.addTo(map); gPath.addTo(map); gKm.addTo(map);
+
+function grade(f){
+  if (f >= 52) return {cls:'t-good', label:'잘 나와요'};
+  if (f >= 44) return {cls:'t-mid',  label:'그런대로'};
+  return {cls:'t-low', label:'아쉬워요'};
+}
+
+/* 러닝 점수도 말로 바꿉니다. 정자동은 원래 뛰기 좋은 동네라 대체로 높게 나와요. */
+function runGrade(v){
+  if (v >= 88) return {cls:'t-good', label:'뛰기 편해요'};
+  if (v >= 78) return {cls:'t-run',  label:'무난해요'};
+  return {cls:'t-mid', label:'좀 힘들어요'};
+}
+
+function icon(pts, size, color){
+  let mnx=1e9,mxx=-1e9,mny=1e9,mxy=-1e9;
+  pts.forEach(([x,y])=>{mnx=Math.min(mnx,x);mxx=Math.max(mxx,x);mny=Math.min(mny,y);mxy=Math.max(mxy,y)});
+  const s=(size-6)/Math.max(mxx-mnx,mxy-mny), cx=(mnx+mxx)/2, cy=(mny+mxy)/2;
+  const d = pts.map(([x,y])=>`${(size/2+(x-cx)*s).toFixed(1)},${(size/2-(y-cy)*s).toFixed(1)}`).join(' ');
+  return `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
+    <polygon points="${d}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round"/></svg>`;
+}
+
+/* 정규화된 모양을 지도 좌표로 되돌립니다 (탐색 때 쓴 변환과 같은 식). */
+function idealLatLngs(c){
+  const lat0 = DATA.center[0]*Math.PI/180;
+  const mx = 111320*Math.cos(lat0), my = 110540;
+  const a = c.rot*Math.PI/180, ca=Math.cos(a), sa=Math.sin(a);
+  const pts = DATA.icons[c.shape].pts;
+  return pts.concat([pts[0]]).map(([px,py])=>{
+    const x0=px*c.flip, y0=py;
+    const x=(x0*ca-y0*sa)*c.scale, y=(x0*sa+y0*ca)*c.scale;
+    return [c.center[0]+y/my, c.center[1]+x/mx];
+  });
+}
+
+const SCENIC_MIN = 0.45;   // 이만큼 공원·하천을 끼면 산책로 코스로 봅니다
+
+function visibleCourses(){
+  if (document.getElementById('spread').checked)
+    return DATA.courses.filter(c=>c.poster);
+  const key = document.getElementById('sort').value;
+  const scenicOnly = document.getElementById('scenic').checked;
+  const out = [];
+  Object.values(byShape).forEach(a=>{
+    const pool = scenicOnly ? a.filter(c=>c.scenic_r >= SCENIC_MIN) : a;
+    if (pool.length) out.push(pool.slice().sort((x,y)=>y[key]-x[key])[0]);
+  });
+  return out;
+}
+
+/* 지도 위 모양 윤곽. 겹쳐 있어도 클릭하면 그것만 남습니다. */
+function drawOutlines(){
+  gOutline.clearLayers(); outlines = [];
+  visibleCourses().forEach(c=>{
+    const col = COLORS[c.shape] || '#00a3a3';
+    const ln = L.polyline(idealLatLngs(c), {color:col, weight:3, opacity:.6})
+      .addTo(gOutline).bindTooltip(c.name, {sticky:true});
+    ln.on('click', e=>{ L.DomEvent.stop(e); select(c, false); });
+    outlines.push({c, ln});
+  });
+  paint();
+}
+
+function paint(){
+  const z = map.getZoom(), zoomed = z >= TH_PATH;
+  outlines.forEach(({c, ln})=>{
+    const isCur = cur && c === cur;
+    // 확대해 실제 경로가 보일 때는 윤곽을 참고선으로만 남깁니다.
+    ln.setStyle({
+      weight: isCur ? (zoomed ? 2 : 5) : 3,
+      opacity: isCur ? (zoomed ? .55 : .95) : (cur ? .18 : .6),
+      dashArray: isCur && zoomed ? '5 7' : null
+    });
+    if (isCur) ln.bringToFront();
+  });
+  gPath.clearLayers(); gKm.clearLayers();
+  if (cur && zoomed){
+    L.polyline(cur.coords, {color:'#fff', weight:9, opacity:.9}).addTo(gPath);
+    L.polyline(cur.coords, {color:COLORS[cur.shape]||'#00a3a3', weight:5,
+      opacity:.95, lineJoin:'round'}).addTo(gPath);
+    L.circleMarker(cur.coords[0], {radius:7, color:'#fff', weight:3,
+      fillColor:'#1c2430', fillOpacity:1}).addTo(gPath).bindTooltip('출발');
+    if (z >= TH_KM) kmMarkers();
+  }
+  tier();
+}
+
+/* 확대하면 1km마다 표시 — 어디까지 뛰었는지 감이 옵니다. */
+function kmMarkers(){
+  let acc = 0, next = 1000;
+  const R = 6371000, rad = x=>x*Math.PI/180;
+  for (let i=1; i<cur.coords.length; i++){
+    const [a1,o1] = cur.coords[i-1], [a2,o2] = cur.coords[i];
+    const dx = rad(o2-o1)*Math.cos(rad((a1+a2)/2))*R, dy = rad(a2-a1)*R;
+    acc += Math.hypot(dx, dy);
+    while (acc >= next){
+      L.marker(cur.coords[i], {icon:L.divIcon({className:'', iconSize:[22,22],
+        html:`<div class="kmk">${next/1000}</div>`})}).addTo(gKm);
+      next += 1000;
+    }
+  }
+}
+
+function tier(){
+  const z = map.getZoom();
+  const el = document.getElementById('tier');
+  if (z < TH_PATH)
+    el.innerHTML = `<b>모양 보기</b><br>확대하면 실제 달릴 길이 나와요`;
+  else if (z < TH_KM)
+    el.innerHTML = `<b>코스 보기</b> · 도로 위 실제 경로<br>점선은 원래 모양이에요`;
+  else
+    el.innerHTML = `<b>코스 보기</b> · 1km 지점 표시 중`;
+}
+
+function render(){
+  document.getElementById('region').textContent =
+    `${DATA.region}의 걷고 달릴 수 있는 길 ${DATA.roads_km}km를 훑어서 찾은 코스예요.`;
+  byShape = {};
+  DATA.courses.forEach(c=>(byShape[c.shape] = byShape[c.shape] || []).push(c));
+  Object.values(byShape).forEach(a=>a.sort((x,y)=>y.fidelity-x.fidelity));
+  list();
+  drawOutlines();
+  select(visibleCourses()[0], true);
+}
+
+function list(){
+  const el = document.getElementById('list');
+  const key = document.getElementById('sort').value;
+  const items = visibleCourses().sort((a,b)=>b[key]-a[key]);
+  el.innerHTML = items.map(c=>{
+    const g = grade(c.fidelity);
+    return `<div class="card" data-k="${c.shape}">
+      ${icon(DATA.icons[c.shape].pts, 42, COLORS[c.shape]||'#00a3a3')}
+      <div><div class="nm">${c.name}<span class="tag ${g.cls}">${g.label}</span></div>
+      <div class="meta">${c.km}km · 약 ${Math.round(c.km*RUN_PACE)}분
+        <span class="tag ${runGrade(c.run).cls}">${runGrade(c.run).label}</span>
+        ${c.scenic_r >= SCENIC_MIN ? '<span class="tag t-scenic">탄천·공원</span>' : ''}
+        </div></div></div>`;
+  }).join('');
+  el.querySelectorAll('.card').forEach(d=>
+    d.onclick = ()=>select(items.find(c=>c.shape===d.dataset.k), true));
+}
+
+function select(c, fly){
+  if (!c) return;
+  cur = c;
+  document.querySelectorAll('.card').forEach(d=>
+    d.classList.toggle('on', d.dataset.k === c.shape));
+  paint();
+  if (fly) map.fitBounds(L.polyline(c.coords).getBounds(), {padding:[40,40]});
+  detail();
+}
+
+function detail(){
+  const c = cur, g = grade(c.fidelity), back = Math.round(c.repeat*100);
+  const road = c.comfort < 1.15 ? '대부분 보행로·이면도로예요'
+             : c.comfort < 1.3  ? '큰길을 조금 끼고 달려요'
+                                : '차 다니는 큰길 비중이 있어요';
+  const alts = byShape[c.shape];
+  const altHtml = alts.length < 2 ? '' :
+    `<div class="alts"><b>이 모양이 나오는 다른 자리 ${alts.length-1}곳</b>` +
+    alts.map((a,i)=>`<button class="${a===c?'on':''}" data-i="${i}">${i+1}. ${a.km}km</button>`).join('') +
+    '</div>';
+  const d = document.getElementById('detail');
+  d.style.display = 'block';
+  d.innerHTML = `
+    <h2>${c.name} <span class="tag ${g.cls}">그림 ${g.label}</span><span
+        class="tag ${runGrade(c.run).cls}">${runGrade(c.run).label}</span></h2>
+    <p>${g.label==='잘 나와요' ? '선이 모양과 거의 겹쳐요 — 완주하면 그림이 제법 살아납니다.'
+       : g.label==='그런대로' ? '군데군데 벌어지지만 윤곽은 알아볼 수 있어요.'
+       : '길이 없는 구간이 많아 모양이 뭉개져요. 재미로만 봐주세요.'}
+       확대하면 점선(원래 모양) 위에 실제 달릴 길이 겹쳐 나와요.</p>
+    ${altHtml}
+    <div class="stats">
+      <div class="stat"><b>${c.km}</b><span>km</span></div>
+      <div class="stat"><b>${Math.round(c.km*RUN_PACE)}</b><span>분 (6분/km)</span></div>
+      <div class="stat"><b>${c.climb}</b><span>m 오르막</span></div>
+    </div>
+    <p><b>달려보면</b> ${runLine(c)}</p>
+    <div class="why">
+      <div><span>오르막 ${c.climb}m</span><i>${floors(c.climb)}</i></div>
+      <div><span>신호 대기</span><i>${c.signals < 1 ? '거의 없어요'
+        : `${Math.round(c.signals)}번쯤 (km당 ${c.signal_km})`}</i></div>
+      <div><span>계단</span><i>${c.steps_m ? c.steps_m+'m — 이 구간은 걸어야 해요' : '없어요'}</i></div>
+      <div><span>탄천·공원길</span><i>${Math.round(c.scenic_r*100)}%${
+        c.scenic_r >= SCENIC_MIN ? ' — 사람들이 실제로 뛰는 길 위주예요'
+        : c.scenic_r >= 0.2 ? ' — 일부만 지나가요' : ' — 거의 동네 길이에요'}</i></div>
+      <div><span>큰길 비중</span><i>${Math.round(c.major_r*100)}% · ${road}</i></div>
+      <div><span>왔던 길 되돌기</span><i>${back}%</i></div>
+    </div>
+    <p>되돌아 뛰는 구간은 뾰족한 끝을 그리려면 들어갔다 나와야 해서 생겨요.
+       GPS 아트에선 정상입니다.</p>
+    <button onclick="gpx()">GPX 내려받기</button>
+    <details><summary>숫자로 보기</summary>
+      <p>닮음 ${c.fidelity} · 러닝 ${c.run} · 종합 ${c.score} (닮음⁰·⁶⁵ × 러닝⁰·³⁵) ·
+         모양 반폭 ${c.scale}m · 길 종류 가중치 ${c.comfort}<br>
+         닮음은 실제 경로와 원래 모양의 평균 어긋남을 모양 크기로 나눈 값이에요.
+         100은 완전히 겹친다는 뜻이고, 도로 위에서는 60을 넘기 어렵습니다.
+         러닝은 오르막·신호·계단·큰길·되돌아오기를 100점에서 깎은 값이에요.
+         오르막은 SRTM 30m 고도라 ±5m쯤 오차가 있고, 500m 창으로 평활해서 셉니다.</p>
+    </details>`;
+  d.querySelectorAll('.alts button').forEach(b=>
+    b.onclick = ()=>{ const a = byShape[c.shape][+b.dataset.i];
+      const keep = outlines.find(o=>o.c.shape===c.shape);
+      if (keep){ gOutline.removeLayer(keep.ln);
+        keep.c = a;
+        keep.ln = L.polyline(idealLatLngs(a), {color:COLORS[a.shape], weight:3})
+          .addTo(gOutline).bindTooltip(a.name, {sticky:true});
+        keep.ln.on('click', e=>{ L.DomEvent.stop(e); select(a, false); });
+      }
+      select(a, true); });
+}
+
+/* 숫자만 던지지 않고 몸으로 아는 단위로 바꿔줍니다. */
+function floors(m){
+  const f = Math.round(m/3);
+  return f < 8 ? '거의 평지예요' : `아파트 ${f}층 계단만큼 올라요`;
+}
+
+function runLine(c){
+  const bits = [];
+  if (c.climb_km < 8) bits.push('거의 평지라 페이스가 안 끊겨요');
+  else if (c.climb_km < 15) bits.push('완만한 오르내림이 있어요');
+  else bits.push('오르막이 꽤 있어서 초반에 힘 빼면 안 돼요');
+  if (c.signal_km < 0.7) bits.push('신호에 걸려 멈출 일이 거의 없고요');
+  else if (c.signal_km > 1.5) bits.push('신호 대기가 잦아 흐름이 끊겨요');
+  if (c.steps_m > 60) bits.push(`계단이 ${c.steps_m}m 껴 있어 그 구간은 걷게 돼요`);
+  if (c.major_r > 0.15) bits.push('큰길을 끼고 달리는 구간이 있어요');
+  if (c.repeat > 0.35) bits.push('왔던 길을 되짚는 비중이 커요');
+  if (c.scenic_r >= SCENIC_MIN) bits.push('탄천·공원 산책로를 주로 달려요');
+  return bits.join(', ') + '.';
+}
+
+function gpx(){
+  const pts = cur.coords.map(([la,lo])=>`<trkpt lat="${la}" lon="${lo}"/>`).join('');
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="running-art" xmlns="http://www.topografix.com/GPX/1/1">
+<trk><name>러닝 아트 - ${cur.name} (${DATA.region})</name><trkseg>${pts}</trkseg></trk></gpx>`;
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([xml], {type:'application/gpx+xml'}));
+  a.download = `running-art-${cur.shape}-${cur.km}km.gpx`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+map.on('zoomend', paint);
+map.on('click', ()=>{ cur = null;
+  document.querySelectorAll('.card').forEach(d=>d.classList.remove('on'));
+  document.getElementById('detail').style.display='none'; paint(); });
+document.getElementById('sort').onchange = ()=>{ list();
+  const c = visibleCourses().find(x=>x.shape===(cur&&cur.shape));
+  document.querySelectorAll('.card').forEach(d=>
+    d.classList.toggle('on', cur && d.dataset.k===cur.shape)); };
+document.getElementById('scenic').onchange = ()=>{ cur = null; list(); drawOutlines();
+  select(visibleCourses()[0], true); };
+document.getElementById('spread').onchange = ()=>{ cur = null; list(); drawOutlines();
+  select(visibleCourses()[0], true); };
+
+fetch('data/courses.json').then(r=>r.json()).then(d=>{ DATA = d; render(); })
+  .catch(()=>{ document.getElementById('list').innerHTML =
+    '<p class="note">데이터를 못 읽었어요. <b>file://</b>로 열면 막히니 ' +
+    '<b>python3 -m http.server</b>로 띄워주세요.</p>'; });
+</script>
+</body>
+</html>
